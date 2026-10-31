@@ -14,10 +14,10 @@ testing on the device; this is not a claim of hardware qualification.
 
 1. Switch the Deck to **Desktop Mode** and fully close Borderlands 4. Let any Steam
    download or file verification finish. Back up your saves before using mods.
-2. Download the **BL4Fix-SteamOS** artifact from the latest successful **main** run
-   of [SteamOS package](https://github.com/Farkoal2128/bl4-fix-deck/actions/workflows/steamos.yml).
-   GitHub requires sign-in for artifact downloads. Extract the artifact ZIP, then
-   **BL4FixSetup-SteamOS.tar.gz** into a folder in your home directory. Double-click
+2. [Download **BL4FixSetup-SteamOS.tar.gz**](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest/download/BL4FixSetup-SteamOS.tar.gz)
+   from the [latest SteamOS release](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest),
+   without signing into GitHub. Its `.sha256` file is on the same release page.
+   Extract the tar archive into a folder in your home directory. Double-click
    the extracted **BL4FixSetup-SteamOS** executable. Allow execution if Dolphin asks.
    Keep it on internal storage if an SD card is mounted with `noexec`.
 
@@ -63,7 +63,7 @@ fails. Old loose `sdk_mods/bl4_*` folders must be moved aside first, since the S
 loads those instead of the packaged mods. Replaced loaders such as `dsound.dll`
 are backed up too; other loaders may be incompatible with the SDK.
 
-**Source package:** the artifact also includes `BL4Fix-SteamOS.zip`. Extract it
+**Source package:** the release also includes [BL4Fix-SteamOS.zip](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest/download/BL4Fix-SteamOS.zip). Extract it
 and run `python3 setup.py` for the same window if you already have Python 3.11+
 and Tk installed. Its command-line fallback is `python3 install.py`; `--list` lists
 installs, `--game "..."` selects one, `--mods bl4_minimap,bl4_respec` selects optional

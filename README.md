@@ -4,12 +4,12 @@
 
 **Direct IP co-op, an in-game mod menu and 20+ quality-of-life mods for Borderlands 4, set up with one installer.**
 
-[![SteamOS graphical installer](https://img.shields.io/badge/SteamOS-Graphical%20Installer-1fb5d6?style=for-the-badge&logo=steam&logoColor=white)](https://github.com/Farkoal2128/bl4-fix-deck/actions/workflows/steamos.yml)
+[![SteamOS graphical installer](https://img.shields.io/badge/SteamOS-Graphical%20Installer-1fb5d6?style=for-the-badge&logo=steam&logoColor=white)](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest/download/BL4FixSetup-SteamOS.tar.gz)
 [![Download BL4FixSetup.exe](https://img.shields.io/badge/Download-BL4FixSetup.exe-f5b82e?style=for-the-badge&logo=windows&logoColor=black)](https://github.com/flameaway/bl4-fix/releases/latest/download/BL4FixSetup.exe)
 [![Or the zip, no exe](https://img.shields.io/badge/Or-the%20zip%2C%20no%20exe-555?style=for-the-badge)](#install-without-the-setup-app)
 
-[![Latest release](https://img.shields.io/github/v/release/flameaway/bl4-fix?label=release&color=1fb5d6)](https://github.com/flameaway/bl4-fix/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/flameaway/bl4-fix/total?color=1fb5d6)](https://github.com/flameaway/bl4-fix/releases)
+[![Latest release](https://img.shields.io/github/v/release/Farkoal2128/bl4-fix-deck?label=release&color=1fb5d6)](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Farkoal2128/bl4-fix-deck/total?color=1fb5d6)](https://github.com/Farkoal2128/bl4-fix-deck/releases)
 ![Borderlands 4](https://img.shields.io/badge/Borderlands%204-PC%20(Steam%20%2F%20Epic)-orange)
 ![Python SDK](https://img.shields.io/badge/oak2--mod--manager-0.3-blueviolet)
 
@@ -56,11 +56,11 @@ app. For this fork's installer, use [SteamOS installation](#steam-deck--steamos-
 
 ### Steam Deck / SteamOS (this fork)
 
-1. Open [SteamOS package builds](https://github.com/Farkoal2128/bl4-fix-deck/actions/workflows/steamos.yml),
-   select the latest successful **main** build, and download the **BL4Fix-SteamOS**
-   artifact (GitHub sign-in required).
-2. In Desktop Mode, extract the artifact ZIP, then extract
-   **BL4FixSetup-SteamOS.tar.gz** into your home folder. Open the extracted
+1. **[Download BL4FixSetup-SteamOS.tar.gz](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest/download/BL4FixSetup-SteamOS.tar.gz)**
+   from the [SteamOS release](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest).
+   No GitHub sign-in is required. The release includes its
+   [SHA-256 checksum](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest/download/BL4FixSetup-SteamOS.tar.gz.sha256).
+2. In Desktop Mode, extract **BL4FixSetup-SteamOS.tar.gz** into your home folder. Open the extracted
    **BL4FixSetup-SteamOS** application. It bundles Python and its graphical toolkit;
    no terminal, sudo, pacman, or Python installation is needed. If Dolphin asks,
    allow the downloaded application to run.
@@ -78,8 +78,8 @@ and in-game file updates are not available on SteamOS.
 
 See [the SteamOS guide](docs/STEAMOS.md) for build instructions,
 launch options, controller setup and platform limits. A portable Python source
-package is also included as **BL4Fix-SteamOS.zip**. Steam Deck gameplay testing is
-still required; automated Linux checks do not replace testing on the device.
+package is also available as **[BL4Fix-SteamOS.zip](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest/download/BL4Fix-SteamOS.zip)**.
+Steam Deck gameplay testing is still required; automated Linux checks do not replace testing on the device.
 
 ### Windows (upstream)
 
