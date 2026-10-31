@@ -181,6 +181,20 @@ class SteamOSTest(unittest.TestCase):
         self.assertEqual(loader.read_bytes(), b"original")
         self.assertFalse((self.game / "sdk_mods/bl4_mod_menu.sdkmod").exists())
 
+    def test_failed_file_replacement_rolls_back_prior_writes(self):
+        loader = self.game / "OakGame/Binaries/Win64/dsound.dll"
+        self.put(loader, b"original loader")
+        replace = Path.replace
+        def fail(source, target):
+            if str(target).endswith("bl4_mod_menu.sdkmod"):
+                raise OSError("simulated disk write failure")
+            return replace(source, target)
+        with patch.object(Path, "replace", fail), self.assertRaises(OSError):
+            steamos.install(self.game, self.payload(), set(), log=lambda _: None)
+        self.assertEqual(loader.read_bytes(), b"original loader")
+        self.assertFalse((self.game / "sdk_mods/bl4_direct.sdkmod").exists())
+        self.assertFalse((self.game / steamos.RECORD).exists())
+
     def test_process_detection_and_unavailable_proc(self):
         self.closed.stop()
         proc = self.root / "proc"
