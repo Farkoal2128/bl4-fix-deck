@@ -4,6 +4,8 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -13,6 +15,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -31,6 +35,18 @@ jobs:
         run: python tools/build_steamos.py --native
       - name: Test the bundled executable and its Tk runtime
         run: xvfb-run -a dist/BL4FixSetup-SteamOS --smoke-test
+      - name: Verify published SteamOS release files
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir published \
+            --pattern 'BL4FixSetup-SteamOS.tar.gz*' --pattern 'BL4Fix-SteamOS.zip*'
+          (cd published && sha256sum --check BL4FixSetup-SteamOS.tar.gz.sha256 BL4Fix-SteamOS.zip.sha256)
+          cmp dist/BL4Fix-SteamOS.zip published/BL4Fix-SteamOS.zip
+          tar -xzf published/BL4FixSetup-SteamOS.tar.gz -C published
+          xvfb-run -a published/BL4FixSetup-SteamOS/BL4FixSetup-SteamOS --smoke-test
       - uses: actions/upload-artifact@v4
         with:
           name: BL4Fix-SteamOS

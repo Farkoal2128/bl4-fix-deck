@@ -21,6 +21,8 @@ permissions:
 
 jobs:
   verify:
+    # SteamOS assets are checked by steamos.yml; this verifier expects the Windows manifest.
+    if: ${{ !startsWith(github.event.release.tag_name || inputs.tag, 'steamos-') }}
     runs-on: windows-latest
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
