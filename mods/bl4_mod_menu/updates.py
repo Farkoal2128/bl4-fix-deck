@@ -187,7 +187,7 @@ def hold(mod_id: str, version: str) -> None:
 
 def can_restart(game_dir: Path | None) -> bool:
     """Whether the helper can start the game again (Steam installs: through Steam)."""
-    return game_dir is not None and "steamapps" in str(game_dir).lower()
+    return not os.environ.get("BL4FIX_STEAMOS") and game_dir is not None and "steamapps" in str(game_dir).lower()
 
 
 def _fresh() -> list[str]:
@@ -467,6 +467,9 @@ def _sdk_problem(game_dir: Path, manifest: dict[str, Any]) -> str:
 
 def check(game_dir: Path, repo: str | None = None) -> None:
     """Fetches the manifest and works out what can be updated. Blocking: call from a worker."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        _set(status="off", message="SteamOS: close the game and install a newer BL4 Fix SteamOS package.", game_dir=game_dir)
+        return
     repo = U.repo if repo is None else repo
     if not repo:
         _set(status="off", message="Update checks aren't set up in this build.", game_dir=game_dir)
@@ -581,6 +584,8 @@ def apply(game_dir: Path, install_new: list[str] | None = None) -> None:
     Downloads every pending update (plus the new mods asked for), verifies and stages them, and
     starts the helper that installs them once the game closes. Blocking: call from a worker.
     """
+    if os.environ.get("BL4FIX_STEAMOS"):
+        raise RuntimeError("SteamOS: update using the SteamOS installer with the game closed.")
     manifest = U.manifest
     if manifest is None:
         raise RuntimeError("check for updates first")
@@ -689,6 +694,8 @@ def helper_script(game_dir: Path, process: str = "Borderlands4") -> str:
 
 def start_helper(game_dir: Path) -> bool:
     """Starts the helper once per game session. Returns whether it runs."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        return False
     if U.helper_started:
         return True
     try:

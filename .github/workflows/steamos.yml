@@ -1,0 +1,42 @@
+name: SteamOS package
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build and virtual-display tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb
+          python -m pip install pyinstaller==6.11.1
+      - name: Test SteamOS installer and platform boundaries
+        run: python dev/steamos_test.py
+      - name: Check shared copies
+        run: python tools/sync_shared.py --check
+      - name: Test setup window and its controls
+        run: xvfb-run -a python dev/steamos_gui_test.py
+      - name: Build standalone SteamOS installer
+        run: python tools/build_steamos.py --native
+      - name: Test the bundled executable and its Tk runtime
+        run: xvfb-run -a dist/BL4FixSetup-SteamOS --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BL4Fix-SteamOS
+          path: |
+            dist/BL4Fix-SteamOS.zip
+            dist/BL4Fix-SteamOS.zip.sha256
+            dist/BL4FixSetup-SteamOS.tar.gz
+            dist/BL4FixSetup-SteamOS.tar.gz.sha256
+          if-no-files-found: error

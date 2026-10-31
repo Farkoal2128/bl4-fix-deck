@@ -262,6 +262,8 @@ def find_rules(name: str = FIREWALL_RULE_NAME, group: str = FIREWALL_GROUP) -> l
     PowerShell-made one. No admin needed, ~0.5 s (a hidden PowerShell): never on the game thread.
     Raises RuntimeError if the firewall can't be read.
     """
+    if os.environ.get("BL4FIX_STEAMOS"):
+        return []
     script = f"$name = {_ps_quote(name)}\n$group = {_ps_quote(group)}\n{_FIND_SCRIPT}"
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     try:

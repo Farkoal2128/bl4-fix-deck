@@ -4,6 +4,7 @@
 
 **Direct IP co-op, an in-game mod menu and 20+ quality-of-life mods for Borderlands 4, set up with one installer.**
 
+[![SteamOS graphical installer](https://img.shields.io/badge/SteamOS-Graphical%20Installer-1fb5d6?style=for-the-badge&logo=steam&logoColor=white)](https://github.com/Farkoal2128/bl4-fix-deck/actions/workflows/steamos.yml)
 [![Download BL4FixSetup.exe](https://img.shields.io/badge/Download-BL4FixSetup.exe-f5b82e?style=for-the-badge&logo=windows&logoColor=black)](https://github.com/flameaway/bl4-fix/releases/latest/download/BL4FixSetup.exe)
 [![Or the zip, no exe](https://img.shields.io/badge/Or-the%20zip%2C%20no%20exe-555?style=for-the-badge)](#install-without-the-setup-app)
 
@@ -31,6 +32,10 @@
 
 ## Why BL4 Fix?
 
+**This fork adds a standalone graphical setup app for Steam Deck / SteamOS.**
+The Windows screenshots and Windows-specific features below describe the upstream
+app. For this fork's installer, use [SteamOS installation](#steam-deck--steamos-this-fork).
+
 - **Play co-op with friends by IP address.** No SHiFT party or Steam invite needed: one player
   hosts, friends join from an in-game panel. Enemies also move far more smoothly on your friends'
   screens than in the game's own co-op.
@@ -48,6 +53,35 @@
   when the game closes.
 
 ## Install
+
+### Steam Deck / SteamOS (this fork)
+
+1. Open [SteamOS package builds](https://github.com/Farkoal2128/bl4-fix-deck/actions/workflows/steamos.yml),
+   select the latest successful **main** build, and download the **BL4Fix-SteamOS**
+   artifact (GitHub sign-in required).
+2. In Desktop Mode, extract the artifact ZIP, then extract
+   **BL4FixSetup-SteamOS.tar.gz** into your home folder. Open the extracted
+   **BL4FixSetup-SteamOS** application. It bundles Python and its graphical toolkit;
+   no terminal, sudo, pacman, or Python installation is needed. If Dolphin asks,
+   allow the downloaded application to run.
+3. Select the detected game folder (internal storage or SD card), tick the mods you
+   want and press **Apply selection**. Direct Connect and Mod Menu are required.
+   Unticked mods are removed; your saves, settings and other mods are kept.
+4. On **System**, press **Copy launch options** and paste them into Borderlands 4's
+   Steam Properties. Merge with existing options. Launch through Steam.
+
+The app also has **Repair**, **Health check**, **Uninstall**, friends and host-port
+settings, and an optional application-menu shortcut. Replaced and removed files are
+backed up; uninstall restores the intro movies and can remove the SDK and restore
+a previous loader. Windows Firewall, NTFS disk trimming, automatic save restores
+and in-game file updates are not available on SteamOS.
+
+See [the SteamOS guide](docs/STEAMOS.md) for build instructions,
+launch options, controller setup and platform limits. A portable Python source
+package is also included as **BL4Fix-SteamOS.zip**. Steam Deck gameplay testing is
+still required; automated Linux checks do not replace testing on the device.
+
+### Windows (upstream)
 
 You need Borderlands 4 on Windows (Steam or Epic). The setup app brings everything else.
 

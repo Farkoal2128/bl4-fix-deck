@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import re
 import socket
 import time
@@ -508,6 +509,8 @@ class PanelApi:
         reports it if the player says no. Used to run the setup app's copy in the game folder, which
         is gone (2026-10-28), then a hidden PowerShell (until 2026-10-30, see shared.py).
         """
+        if os.environ.get("BL4FIX_STEAMOS"):
+            return "SteamOS: configure the Linux firewall in Desktop Mode; the Windows rule is unavailable."
         config = Config.load(FRIENDS_FILE)
         signature = config.firewall_signature()
         spec = config.firewall_spec()

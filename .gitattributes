@@ -5,3 +5,7 @@ assets/** -text
 shared/** -text
 mods/*/uilink/** -text
 mods/*/health/** -text
+# Shared input packages must also survive Windows checkouts byte for byte.
+mods/*/frametick/** -text
+mods/*/gamekeys/** -text
+ported/*/frametick/** -text

@@ -8,7 +8,7 @@ Extracted into the game folder it gives what the setup app's Install gives with 
   (a re-extract never touches the player's settings; the setup app skips it the same way)
 - sdk_mods/<id>.sdkmod for every mod in installer/catalog.py (the release's own files)
 - the BL4 UI Link pak (Paks/~mods/BL4Fix_UILink_4251_P.pak) and the page scripts the game's pages
-  load at startup (core.PAGE_SCRIPTS: bl4link/, bl4modmenu/, bl4instanttabs/). The setup app
+  load at startup (pages.PAGE_SCRIPTS: bl4link/, bl4modmenu/, bl4instanttabs/). The setup app
   writes these before the first launch (core.prepare_pages), because paks only load at startup:
   without them a fresh install's first launch has no mod pages. The pak is the same bytes every
   link mod builds (uilink.build_pak), so the mods in game find it current.
@@ -45,7 +45,7 @@ for extra in (REPO_ROOT / "installer", REPO_ROOT / "mods" / "bl4_direct", REPO_R
 
 import build as installer_build  # noqa: E402  # installer/build.py
 import catalog  # noqa: E402
-import core  # noqa: E402  # installer/core.py: PAGE_SCRIPTS and the page module loader
+import pages  # noqa: E402  # portable startup page definitions and module loader
 
 UI_REL = "OakGame/Content/uiresources"
 PAKS_REL = "OakGame/Content/Paks/~mods"
@@ -69,6 +69,11 @@ INSTALL
    can switch off the ones you don't want. F6 is BL4 Direct Connect (co-op).
 
 Kairosdex's boss and item pictures are in the zip too: nothing to download.
+
+STEAMOS / STEAM DECK (THIS FORK)
+Use the outer SteamOS package's STEAMOS.md for launch options and Desktop Mode installation.
+The Windows setup app and PowerShell helpers are not used on SteamOS. Keep
+BL4FIX_STEAMOS=1 in the game's launch options. Update and restore files with the game closed.
 
 IF NOTHING SHOWS IN GAME
 - Install Microsoft's Visual C++ runtime (x64): https://aka.ms/vs/17/release/vc_redist.x64.exe
@@ -109,18 +114,18 @@ def _entry(name: str) -> zipfile.ZipInfo:
 def page_files(sdkmods: Path) -> dict[str, bytes]:
     """The UI Link pak and the startup page scripts, as zip paths -> bytes."""
     link_mods = [m.id for m in catalog.MODS if m.link]
-    wanted = sorted({*link_mods, *(m for m, _, _ in core.PAGE_SCRIPTS)})
+    wanted = sorted({*link_mods, *(m for m, _, _ in pages.PAGE_SCRIPTS)})
     files: dict[str, bytes] = {}
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         for mod_id in wanted:
             with zipfile.ZipFile(sdkmods / f"{mod_id}.sdkmod") as zf:
                 zf.extractall(root)
-        uilink = core._load_page_module(root, link_mods[0], "uilink")  # noqa: SLF001
+        uilink = pages.load_page_module(root, link_mods[0], "uilink")  # noqa: SLF001
         if uilink.PAK_NAME != catalog.LINK_PAK:
             raise SystemExit(f"uilink.PAK_NAME {uilink.PAK_NAME} != catalog.LINK_PAK {catalog.LINK_PAK}")
         files[f"{PAKS_REL}/{uilink.PAK_NAME}"] = uilink.build_pak()
-        for mod_id, folder, ui_dir in core.PAGE_SCRIPTS:
+        for mod_id, folder, ui_dir in pages.PAGE_SCRIPTS:
             for path in sorted((root / mod_id / folder).glob("*")):
                 if not path.is_file():
                     continue

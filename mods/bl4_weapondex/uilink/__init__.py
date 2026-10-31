@@ -103,7 +103,7 @@ except ImportError:  # the setup app imports this module for sync() and check() 
 
 
 # Bump on every change to this package: the newest copy loaded runs the link
-VERSION = 10
+VERSION = 11
 HUB = "_bl4_uilink"
 PAK_NAME = "BL4Fix_UILink_4251_P.pak"
 UI_PREFIX = "OakGame/Content/uiresources/"
@@ -906,6 +906,9 @@ def _apply_after_exit(target: Path) -> bool:
     applies whatever is staged next to `target` at that point (a pak changed under a running game
     is read at its old offsets). Same helper as the Mod Menu's pause_page.
     """
+    if os.environ.get("BL4FIX_STEAMOS"):
+        logging.warning("[UI Link] Close the game, then open BL4 Fix Setup > System > Finish pending UI change.")
+        return False
     hub = _hub()
     if hub.helper_started:
         return True
@@ -1239,23 +1242,25 @@ def _text_release(hub: types.ModuleType) -> None:
 
 # ctypes.WinDLL, not PyDLL: these calls must let go of the GIL. Our own objects, so the shared
 # windll prototypes other code uses stay untouched.
-_user32 = ctypes.WinDLL("user32")
-_kernel32 = ctypes.WinDLL("kernel32")
-_iphlpapi = ctypes.WinDLL("iphlpapi")
-_user32.GetForegroundWindow.restype = ctypes.c_void_p
-_user32.GetWindowThreadProcessId.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
-_user32.IsWindowVisible.argtypes = (ctypes.c_void_p,)
-_user32.PostMessageW.argtypes = (ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t)
-_ENUM_PROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-_user32.EnumWindows.argtypes = (_ENUM_PROC, ctypes.c_void_p)
-_kernel32.OpenProcess.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
-_kernel32.OpenProcess.restype = ctypes.c_void_p
-_kernel32.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
-_kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
-_iphlpapi.GetExtendedTcpTable.argtypes = (
-    ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong), ctypes.c_int, ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong,
-)  # fmt: skip
-_iphlpapi.GetExtendedTcpTable.restype = ctypes.c_ulong
+# Offline Linux packaging only builds the pak; Win32 calls run inside Proton.
+if os.name == "nt":
+    _user32 = ctypes.WinDLL("user32")
+    _kernel32 = ctypes.WinDLL("kernel32")
+    _iphlpapi = ctypes.WinDLL("iphlpapi")
+    _user32.GetForegroundWindow.restype = ctypes.c_void_p
+    _user32.GetWindowThreadProcessId.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+    _user32.IsWindowVisible.argtypes = (ctypes.c_void_p,)
+    _user32.PostMessageW.argtypes = (ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t)
+    _ENUM_PROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    _user32.EnumWindows.argtypes = (_ENUM_PROC, ctypes.c_void_p)
+    _kernel32.OpenProcess.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
+    _kernel32.OpenProcess.restype = ctypes.c_void_p
+    _kernel32.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+    _kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    _iphlpapi.GetExtendedTcpTable.argtypes = (
+        ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong), ctypes.c_int, ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong,
+    )  # fmt: skip
+    _iphlpapi.GetExtendedTcpTable.restype = ctypes.c_ulong
 
 _DIGITS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
 VK_ESCAPE = 0x1B

@@ -23,6 +23,7 @@ moment later, once they're down (never travel from inside the UI).
 
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
@@ -176,6 +177,11 @@ def _firewall_status(config: Config | None) -> dict[str, Any]:
     The Firewall section: the two switches and what's blocked or let in, from the friends file
     and what Windows Firewall has right now (Live). action: "update", "remove" or None.
     """
+    if os.environ.get("BL4FIX_STEAMOS"):
+        return {"on": False, "lan": False, "summary": "Managed by SteamOS",
+                "details": "Configure the Linux firewall in Desktop Mode for your host UDP port (default 7777). "
+                           "BL4 Fix does not install a Linux friend allowlist.",
+                "cls": "", "action": None}
     asking = ui.Elevated.busy
     if S.was_asking and not asking:
         Live.refresh(force=True)  # a prompt just ended: show what it did
@@ -232,6 +238,9 @@ def _firewall_status(config: Config | None) -> dict[str, Any]:
 
 def _set_firewall_setting(field: str, on: bool, reason: str) -> None:
     """Saves a switch of the Firewall section; asks (Continue / Not now) if the rule must change."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        say("SteamOS: manage the Linux firewall in Desktop Mode.", error=True)
+        return
     path = _friends_file()
     config = Config.load(path)
     if getattr(config, field) == on:
@@ -353,7 +362,7 @@ def _after_friends_changed(done: str) -> None:
     behind, the page asks at the top (Continue / Not now) before Windows' prompt, whether or not
     you're hosting. Hosting itself never asks.
     """
-    if ui.api.firewall_up_to_date():  # also when the rule is turned off
+    if os.environ.get("BL4FIX_STEAMOS") or ui.api.firewall_up_to_date():  # also when the rule is turned off
         S.ask_firewall = ""
         say(done)
     else:

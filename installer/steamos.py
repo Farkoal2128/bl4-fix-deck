@@ -1,0 +1,416 @@
+"""Install the BL4 Fix payload on SteamOS, using only Python's standard library."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import sys
+import tempfile
+import zipfile
+from pathlib import Path, PurePosixPath
+
+import catalog
+
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mods/bl4_skip_intro"))
+import movies
+
+APP_ID = "1285190"
+GAME_EXE = "OakGame/Binaries/Win64/Borderlands4.exe"
+LAUNCH_OPTIONS = 'BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" %command% -pf_tricks=vcrun2022'
+
+
+def find_games(home: Path) -> list[Path]:
+    roots = [home / ".local/share/Steam", home / ".steam/steam",
+             home / ".var/app/com.valvesoftware.Steam/.local/share/Steam"]
+    libraries = set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        libraries.add(root.resolve())
+        vdf = root / "steamapps/libraryfolders.vdf"
+        if vdf.is_file():
+            text = vdf.read_text(encoding="utf-8")
+            libraries.update(Path(p.replace("\\\\", "\\")).expanduser().resolve()
+                             for p in re.findall(r'"path"\s*"([^"\n]+)"', text))
+    found = set()
+    for library in libraries:
+        manifest = library / f"steamapps/appmanifest_{APP_ID}.acf"
+        if not manifest.is_file():
+            continue
+        match = re.search(r'"installdir"\s*"([^"\n]+)"', manifest.read_text(encoding="utf-8"))
+        if match and PurePosixPath(match[1]).name == match[1] and match[1] not in (".", ".."):
+            game = library / "steamapps/common" / match[1]
+            if (game / GAME_EXE).is_file():
+                found.add(game.resolve())
+    return sorted(found)
+
+
+def ensure_closed(proc: Path = Path("/proc")) -> None:
+    """Fail closed if a game process is present or process inspection is unavailable."""
+    if not proc.is_dir():
+        raise RuntimeError("Run the installer on SteamOS/Linux with /proc available.")
+    for entry in proc.iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            args = (entry / "cmdline").read_bytes().split(b"\0")
+            comm = (entry / "comm").read_bytes().strip().lower()
+        except FileNotFoundError:
+            continue  # process exited during the scan
+        except PermissionError as ex:
+            raise RuntimeError("Cannot check all running processes. Close the game and retry.") from ex
+        if comm.startswith(b"borderlands4") or any(
+            arg.replace(b"\\", b"/").rsplit(b"/", 1)[-1].lower() == b"borderlands4.exe" for arg in args
+        ):
+            raise RuntimeError("Close Borderlands 4 before installing or updating.")
+
+
+RECORD = "sdk_mods/.bl4fix-steamos/install.json"
+UI_ROOT = "OakGame/Content/uiresources/"
+PAK_ROOT = "OakGame/Content/Paks/~mods/"
+
+
+def payload_path() -> Path:
+    path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "BL4Fix-Manual.zip"
+    if not path.is_file() and not getattr(sys, "frozen", False):
+        path = Path(__file__).resolve().parents[1] / "dist/BL4Fix-Manual.zip"
+    return path
+
+
+def safe_target(game: Path, name: str) -> Path:
+    rel = PurePosixPath(name)
+    if (not rel.parts or "\\" in name or ":" in name or rel.is_absolute() or ".." in rel.parts
+            or rel.as_posix() != name or rel.parts[0] not in ("OakGame", "sdk_mods")
+            and name != "BL4Fix-README.txt" or rel.suffix.lower() == ".sav"):
+        raise ValueError(f"Unsafe file path: {name}")
+    target = game.joinpath(*rel.parts)
+    if not target.resolve().is_relative_to(game) or any(p.is_symlink() for p in [target, *target.parents] if p != game):
+        raise ValueError(f"File path uses a link or leaves the game folder: {name}")
+    if target.exists() and not target.is_file():
+        raise ValueError(f"File target is not a file: {name}")
+    return target
+
+
+def game_folder(game: Path) -> Path:
+    game = game.resolve(strict=True)
+    if not (game / GAME_EXE).is_file():
+        raise ValueError("Choose the Borderlands 4 folder containing OakGame, not the Win64 folder.")
+    return game
+
+
+def read_record(game: Path) -> dict:
+    path = safe_target(game, RECORD)
+    if not path.exists():
+        return {}
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict) or not isinstance(record.get("files"), list):
+        raise ValueError("The SteamOS installation record is damaged; keep it and contact support.")
+    for name in record["files"]:
+        if not isinstance(name, str):
+            raise ValueError("Invalid installation record path.")
+        safe_target(game, name)
+        if "settings" in PurePosixPath(name).parts or name == GAME_EXE or name == RECORD:
+            raise ValueError("The installation record includes a protected user or game file.")
+    sdk_files = record.get("sdk_files", [])
+    if not isinstance(sdk_files, list) or any(not isinstance(n, str) or n not in record["files"] for n in sdk_files):
+        raise ValueError("Invalid SDK installation record.")
+    return record
+
+
+def installed_mods(game: Path) -> set[str]:
+    return {m.id for m in catalog.MODS if (game / f"sdk_mods/{m.id}.sdkmod").is_file()}
+
+
+def _apply_changes(game: Path, changes: dict[str, bytes | None], record: dict | None, log=print) -> Path:
+    targets = {name: safe_target(game, name) for name in changes}
+    if record is not None:
+        safe_target(game, RECORD)
+    ensure_closed()
+    backup = Path(tempfile.mkdtemp(prefix="bl4fix-backup-", dir=game))
+    if record is not None:
+        loader = "OakGame/Binaries/Win64/dsound.dll"
+        old = game / loader
+        if "loader_backup" not in record and old.is_file() and loader in changes and old.read_bytes() != changes[loader]:
+            record["loader_backup"] = (backup.relative_to(game) / loader).as_posix()
+        changes[RECORD] = json.dumps(record, indent=2).encode()
+        targets[RECORD] = safe_target(game, RECORD)
+    written = []
+    try:
+        for name, data in changes.items():
+            target = targets[name]
+            existed = target.is_file()
+            if data is None and not existed or data is not None and existed and target.read_bytes() == data:
+                continue
+            old = backup / name
+            if existed:
+                old.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, old)
+            written.append((target, old if existed else None))
+            if data is None:
+                target.unlink()
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                tmp = None
+                try:
+                    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as stream:
+                        tmp = Path(stream.name)
+                        stream.write(data)
+                    tmp.replace(target)
+                    if hashlib.sha256(target.read_bytes()).digest() != hashlib.sha256(data).digest():
+                        raise OSError(f"Verification failed: {name}")
+                finally:
+                    if tmp is not None:
+                        tmp.unlink(missing_ok=True)
+            log(f"{'Removed' if data is None else 'Installed'} {name}")
+        (backup / "installed-files.txt").write_text(
+            "\n".join(str(t.relative_to(game)) for t, _ in written) + "\n", encoding="utf-8")
+    except BaseException:
+        for target, old in reversed(written):
+            if old is None:
+                target.unlink(missing_ok=True)
+            else:
+                shutil.copy2(old, target)
+        log(f"Operation rolled back. Backup: {backup}")
+        raise
+    return backup
+
+
+def _mod_files(game: Path, ids: set[str], include_link: bool = False) -> set[str]:
+    names = {f"sdk_mods/{mod_id}.sdkmod" for mod_id in ids}
+    folders = set()
+    for mod_id in ids:
+        info = catalog.BY_ID[mod_id]
+        for pak in info.paks:
+            names.update(PAK_ROOT + pak + suffix for suffix in ("", ".next", ".remove"))
+        folders.update(info.ui_dirs)
+    if include_link:
+        names.update(PAK_ROOT + catalog.LINK_PAK + suffix for suffix in ("", ".next", ".remove"))
+        folders.add(catalog.LINK_UI_DIR)
+    for folder in folders:
+        root = game / UI_ROOT / folder
+        safe_target(game, UI_ROOT + folder + "/.bl4fix-check")
+        # Never follow a replaced root (rglob itself does not follow child directory links).
+        if root.is_symlink():
+            raise ValueError(f"Move the linked UI folder aside first: {root}")
+        for path in root.rglob("*"):
+            if path.is_symlink():
+                raise ValueError(f"Move the linked UI file aside first: {path}")
+            if path.is_file():
+                names.add(path.relative_to(game).as_posix())
+    return names
+
+
+def _movies(game: Path, enabled: bool, changes: dict) -> None:
+    for name in movies.LOGOS:
+        movie = game / f"OakGame/Content/Movies/{name}.bk2"
+        parked = movie.with_name(movie.name + movies.SUFFIX)
+        for path in (movie, parked):
+            safe_target(game, path.relative_to(game).as_posix())
+        if enabled and movie.is_file():
+            changes[parked.relative_to(game).as_posix()] = movie.read_bytes()
+            changes[movie.relative_to(game).as_posix()] = None
+        elif not enabled and parked.is_file():
+            if not movie.exists():
+                changes[movie.relative_to(game).as_posix()] = parked.read_bytes()
+            changes[parked.relative_to(game).as_posix()] = None
+
+
+def install(game: Path, archive: Path, chosen: set[str] | None = None, log=print) -> Path:
+    game = game_folder(game)
+    ensure_closed()
+    selected = set(catalog.DEFAULTS) if chosen is None else set(chosen)
+    if selected - catalog.BY_ID.keys():
+        raise ValueError("Unknown mod selected.")
+    selected.update(catalog.REQUIRED)
+    record = read_record(game)
+    changes = {}
+    sdk_files = []
+    with zipfile.ZipFile(archive) as zf:
+        entries = []
+        seen = set()
+        if sum(item.file_size for item in zf.infolist()) > 1 << 30:
+            raise ValueError("The payload exceeds the 1 GiB size limit.")
+        for item in zf.infolist():
+            if item.is_dir():
+                continue
+            name = item.filename
+            target = safe_target(game, name)
+            if (item.orig_filename != name or name.casefold() in seen
+                    or stat.S_ISLNK(item.external_attr >> 16)
+                    or "settings" in [p.lower() for p in PurePosixPath(name).parts]):
+                raise ValueError(f"Unsafe or duplicate payload path: {name}")
+            seen.add(name.casefold())
+            entries.append(item)
+        required = {"oakgame/binaries/win64/dsound.dll", *(f"sdk_mods/{m}.sdkmod" for m in selected)}
+        if not required <= seen:
+            raise ValueError("Not a complete BL4 Fix payload (SDK or a selected mod is missing).")
+        for mod_id in catalog.BY_ID:
+            loose = game / "sdk_mods" / mod_id
+            if loose.exists():
+                raise ValueError(f"Move the old loose mod folder aside first: {loose}")
+        for item in entries:
+            name = item.filename
+            mod_id = PurePosixPath(name).stem if name.startswith("sdk_mods/") and name.endswith(".sdkmod") else None
+            owners = {m.id for m in catalog.MODS for folder in m.ui_dirs
+                      if name.startswith(UI_ROOT + folder + "/")}
+            if mod_id in catalog.BY_ID and mod_id not in selected or owners and not owners & selected:
+                continue
+            changes[name] = zf.read(item)
+            if mod_id not in catalog.BY_ID and not name.startswith(UI_ROOT) and not name.startswith(PAK_ROOT) and name != "BL4Fix-README.txt":
+                sdk_files.append(name)
+    files = list(changes)
+    removed = set(catalog.BY_ID) - selected
+    for name in _mod_files(game, removed):
+        changes.setdefault(name, None)
+    for mod_id in sorted(selected):
+        name = f"sdk_mods/settings/{mod_id}.json"
+        path = safe_target(game, name)
+        if not path.exists() or mod_id in catalog.REQUIRED or mod_id == "bl4_skip_intro":
+            data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            if not isinstance(data, dict):
+                raise ValueError(f"Settings are not a JSON object: {path}")
+            data["enabled"] = True
+            changes[name] = json.dumps(data, indent=4).encode()
+    skip_settings = "sdk_mods/settings/bl4_skip_intro.json"
+    if "bl4_skip_intro" not in selected and (path := safe_target(game, skip_settings)).is_file():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Skip Intro settings are damaged.")
+        data["enabled"] = False
+        changes[skip_settings] = json.dumps(data, indent=4).encode()
+    _movies(game, "bl4_skip_intro" in selected, changes)
+    record.update({"files": files, "mods": sorted(selected), "sdk_files": sdk_files,
+                   "sdk_hashes": {n: hashlib.sha256(changes[n]).hexdigest() for n in sdk_files}})
+    backup = _apply_changes(game, changes, record, log)
+    log(f"Finished. Backup: {backup}")
+    return backup
+
+
+def uninstall(game: Path, remove_sdk: bool = False, log=print) -> Path:
+    game = game_folder(game)
+    ensure_closed()
+    record = read_record(game)
+    sdk_files = record.get("sdk_files", [])
+    if not isinstance(sdk_files, list) or any(not isinstance(n, str) for n in sdk_files):
+        raise ValueError("Invalid SDK installation record.")
+    sdk_set = set(sdk_files)
+    names = _mod_files(game, set(catalog.BY_ID), include_link=True)
+    names.update(n for n in record.get("files", []) if n not in sdk_set)
+    changes = {name: None for name in names}
+    if remove_sdk:
+        if not sdk_files:
+            raise ValueError("No SteamOS SDK installation record. Keep the SDK or remove it manually.")
+        for name in sdk_files:
+            target = safe_target(game, name)
+            if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() != record.get("sdk_hashes", {}).get(name):
+                raise ValueError(f"SDK file was changed by another program; keep it or inspect it first: {name}")
+            changes[name] = None
+        loader_backup = record.get("loader_backup")
+        if loader_backup:
+            if not isinstance(loader_backup, str):
+                raise ValueError("Invalid original loader backup path.")
+            rel = PurePosixPath(loader_backup)
+            if (rel.is_absolute() or not rel.parts[0].startswith("bl4fix-backup-") or ".." in rel.parts
+                    or "\\" in loader_backup or ":" in loader_backup
+                    or rel.parts[1:] != ("OakGame", "Binaries", "Win64", "dsound.dll")):
+                raise ValueError("Invalid original loader backup path.")
+            original = game / loader_backup
+            if not original.resolve().is_relative_to(game) or original.is_symlink():
+                raise ValueError("Original loader backup leaves the game folder.")
+            changes["OakGame/Binaries/Win64/dsound.dll"] = original.read_bytes()
+        changes[RECORD] = None
+        next_record = None
+    else:
+        next_record = {**record, "files": sdk_files, "mods": []}
+    _movies(game, False, changes)
+    return _apply_changes(game, changes, next_record, log)
+
+
+def health(game: Path, archive: Path) -> list[str]:
+    game = game_folder(game)
+    messages = [f"Game: {game}"]
+    mods = installed_mods(game)
+    messages.append(f"Installed catalog mods: {len(mods)} / {len(catalog.MODS)}")
+    with zipfile.ZipFile(archive) as zf:
+        for name in ("OakGame/Binaries/Win64/dsound.dll", "OakGame/Binaries/Win64/Plugins/unrealsdk.toml",
+                     PAK_ROOT + catalog.LINK_PAK, *(f"sdk_mods/{m}.sdkmod" for m in sorted(mods))):
+            path = safe_target(game, name)
+            messages.append(f"{'OK' if path.is_file() and path.read_bytes() == zf.read(name) else 'Missing or changed'}: {name}")
+    return messages
+
+
+def finish(game: Path) -> Path | None:
+    """Apply only the UI Link's staged pak change, after the game has closed."""
+    game = game.resolve(strict=True)
+    if not (game / GAME_EXE).is_file():
+        raise ValueError("Choose the game folder containing OakGame.")
+    ensure_closed()
+    target = game / "OakGame/Content/Paks/~mods/BL4Fix_UILink_4251_P.pak"
+    replacement = target.with_name(target.name + ".next")
+    removal = target.with_name(target.name + ".remove")
+    for path in (target, replacement, removal):
+        if not path.resolve().is_relative_to(game) or any(p.is_symlink() for p in [path, *path.parents] if p != game):
+            raise ValueError(f"Refusing linked pak path: {path}")
+    if not replacement.is_file() and not removal.is_file():
+        return None
+    backup = Path(tempfile.mkdtemp(prefix="bl4fix-backup-", dir=game))
+    if target.exists():
+        shutil.copy2(target, backup / target.name)
+    if removal.is_file():
+        target.unlink(missing_ok=True)
+        replacement.unlink(missing_ok=True)
+        removal.unlink()
+    else:
+        replacement.replace(target)
+    return backup
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--game", type=Path, help="game folder containing OakGame; otherwise detect Steam libraries")
+    parser.add_argument("--archive", type=Path, default=payload_path())
+    parser.add_argument("--list", action="store_true", help="list detected installations without changing files")
+    parser.add_argument("--mods", help="comma-separated mod IDs; required mods are always installed")
+    parser.add_argument("--uninstall", action="store_true")
+    parser.add_argument("--remove-sdk", action="store_true")
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--finish", action="store_true", help="apply a pending UI Link pak change, game closed")
+    args = parser.parse_args()
+    try:
+        games = [args.game] if args.game else find_games(Path.home())
+        if args.list:
+            print("\n".join(map(str, games)) or "No Steam install found. Use --game with its folder.")
+            return 0
+        if len(games) != 1:
+            raise ValueError("Use --game with one game folder (no install found, or multiple installs found).")
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            raise ValueError("Run as your normal Steam user, without sudo.")
+        if args.check:
+            print("\n".join(health(games[0], args.archive)))
+            return 0
+        if args.uninstall:
+            print(f"Uninstalled. Backup: {uninstall(games[0], args.remove_sdk)}")
+            return 0
+        if args.finish:
+            backup = finish(games[0])
+            print(f"Applied pending UI Link change. Backup: {backup}" if backup else "No pending UI Link change.")
+            return 0
+        backup = install(games[0], args.archive, None if args.mods is None else {m for m in args.mods.split(",") if m})
+        print(f"Installed. Replaced files are backed up in:\n{backup}")
+        print(f"Steam > Borderlands 4 > Properties > Launch Options:\n{LAUNCH_OPTIONS}")
+        print("Merge with any existing launch options. Map a rear button to F7 in Steam Input.")
+        print("Updates: install a newer SteamOS package with the game closed. See STEAMOS.md for limitations.")
+        return 0
+    except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as ex:
+        print(f"Error: {ex}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

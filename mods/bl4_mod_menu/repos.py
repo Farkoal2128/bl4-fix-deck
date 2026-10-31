@@ -1125,6 +1125,9 @@ def install_async(mod_id: str, *, held: dict[str, Any] | None = None) -> bool:
     """Downloads a mod from Discover, puts it in sdk_mods and loads it now. Another modder's mod
     first waits on the confirm step (_review: what its code uses); held: the download the player
     confirmed there (install_confirm), used as it is, not fetched again."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        _say("SteamOS: install mod files in Desktop Mode with the game closed.", error=True)
+        return False
     game_dir = R.game_dir
     found = (held["key"], held["entry"]) if held else _find(mod_id)
     if game_dir is None or found is None:
@@ -1181,6 +1184,9 @@ def update_async(mod_ids: list[str], *, held: dict[str, dict[str, Any]] | None =
     """Downloads updates from the repositories, stages them, and reloads each mod that can. Each
     first waits on the confirm step (_review: what's new in its code); held: mod id -> the download
     the player confirmed there (update_confirm), used as it is."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        _say("SteamOS: update mod files in Desktop Mode with the game closed.", error=True)
+        return 0
     game_dir = R.game_dir
     if game_dir is None:
         return 0
@@ -1367,6 +1373,8 @@ def _after_load(mod_id: str, entry: dict[str, Any], text: str, error: bool, *, i
 
 def remove_mod(mod_id: str) -> str:
     """Game thread: turns the mod off now and deletes its file when the game closes."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        raise RuntimeError("SteamOS: disable the mod here, then remove its file in Desktop Mode with the game closed.")
     game_dir = R.game_dir
     if game_dir is None:
         raise RuntimeError("not ready")

@@ -132,6 +132,8 @@ def _scan_rollbacks(game_dir: Path) -> list[dict[str, Any]]:
 
 def roll_back(game_dir: Path, mod_id: str) -> None:
     """Stages the rollback copy as an update and queues its reload. Blocking file work: a worker."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        raise RuntimeError("SteamOS: restore the earlier mod file in Desktop Mode with the game closed.")
     entry = next((r for r in B.rollbacks if r["id"] == mod_id), None)
     if entry is None:
         raise RuntimeError("there's no earlier copy of that mod any more")

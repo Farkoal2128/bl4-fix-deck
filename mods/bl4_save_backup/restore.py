@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -59,6 +60,8 @@ def _save_plan(acc: store.Account, plan: dict[str, Any]) -> None:
 
 
 def _add(acc: store.Account, actions: list[dict[str, Any]], key: bytes | None) -> dict[str, Any]:
+    if os.environ.get("BL4FIX_STEAMOS"):
+        raise RestoreError("SteamOS: close the game and restore backup files in Desktop Mode. See STEAMOS.md.")
     plan = pending(acc) or {"id": f"{time.time():.0f}", "created": time.time(), "actions": []}
     plan["save_dir"] = str(acc.save_dir)
     targets = {a["target"] for a in actions}
@@ -215,6 +218,8 @@ def stage_all(st: store.Store, acc: store.Account, backup: str) -> tuple[str, li
 
 def start_helper(base: Path) -> bool:
     """Starts the helper once per game session (again if it ended). Returns whether one runs."""
+    if os.environ.get("BL4FIX_STEAMOS"):
+        return False
     helper = _state.helper
     if helper is not None and helper.poll() is None:
         return True
