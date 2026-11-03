@@ -12,6 +12,7 @@ import stat
 import sys
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path, PurePosixPath
 
 import catalog
@@ -74,6 +75,15 @@ def ensure_closed(proc: Path = Path("/proc")) -> None:
 RECORD = "sdk_mods/.bl4fix-steamos/install.json"
 UI_ROOT = "OakGame/Content/uiresources/"
 PAK_ROOT = "OakGame/Content/Paks/~mods/"
+SDK_ANCHORS = (
+    "OakGame/Binaries/Win64/dsound.dll",
+    *(f"OakGame/Binaries/Win64/Plugins/{name}" for name in (
+        "unrealsdk.toml", "unrealsdk.dll", "pyunrealsdk.dll", "python3.dll",
+        "python314.dll", "python314.zip", "python314._pth",
+    )),
+    "sdk_mods/__main__.py", "sdk_mods/mods_base.sdkmod", "sdk_mods/console_mod_menu.sdkmod",
+    "sdk_mods/keybinds/keybinds.pyd",
+)
 
 
 def payload_path() -> Path:
@@ -83,15 +93,28 @@ def payload_path() -> Path:
     return path
 
 
-def safe_target(game: Path, name: str) -> Path:
+def _payload_path_parts(name: str) -> tuple[str, ...]:
     rel = PurePosixPath(name)
     if (not rel.parts or "\\" in name or ":" in name or rel.is_absolute() or ".." in rel.parts
             or rel.as_posix() != name or rel.parts[0] not in ("OakGame", "sdk_mods")
             and name != "BL4Fix-README.txt" or rel.suffix.lower() == ".sav"):
         raise ValueError(f"Unsafe file path: {name}")
-    target = game.joinpath(*rel.parts)
-    if not target.resolve().is_relative_to(game) or any(p.is_symlink() for p in [target, *target.parents] if p != game):
+    return rel.parts
+
+
+def _unlinked_target(game: Path, name: str) -> Path:
+    target = game
+    for part in _payload_path_parts(name):
+        target = target / part
+        if target.is_symlink():
+            raise ValueError(f"File path uses a link or leaves the game folder: {name}")
+    if not target.resolve().is_relative_to(game):
         raise ValueError(f"File path uses a link or leaves the game folder: {name}")
+    return target
+
+
+def safe_target(game: Path, name: str) -> Path:
+    target = _unlinked_target(game, name)
     if target.exists() and not target.is_file():
         raise ValueError(f"File target is not a file: {name}")
     return target
@@ -221,6 +244,38 @@ def _movies(game: Path, enabled: bool, changes: dict) -> None:
             changes[parked.relative_to(game).as_posix()] = None
 
 
+def _payload_entries(zf: zipfile.ZipFile, *, check_directories: bool = False) -> dict[str, zipfile.ZipInfo]:
+    entries = {}
+    seen = set()
+    members = zf.infolist()
+    if sum(item.file_size for item in members) > 1 << 30:
+        raise ValueError("The payload exceeds the 1 GiB size limit.")
+    for item in members:
+        is_dir = item.is_dir()
+        if is_dir and not check_directories:
+            continue
+        name = item.filename
+        path = name.removesuffix("/") if is_dir else name
+        parts = _payload_path_parts(path)
+        if (item.orig_filename != name or path.casefold() in seen
+                or stat.S_ISLNK(item.external_attr >> 16)
+                or any(part.lower() == "settings" for part in parts)):
+            raise ValueError(f"Unsafe or duplicate payload path: {name}")
+        seen.add(path.casefold())
+        if not is_dir:
+            entries[name] = item
+    return entries
+
+
+def _catalog_mod_id(name: str) -> str | None:
+    return PurePosixPath(name).stem if name.startswith("sdk_mods/") and name.endswith(".sdkmod") else None
+
+
+def _is_sdk_file(name: str, mod_id: str | None) -> bool:
+    return (mod_id not in catalog.BY_ID and not name.startswith((UI_ROOT, PAK_ROOT))
+            and name != "BL4Fix-README.txt")
+
+
 def install(game: Path, archive: Path, chosen: set[str] | None = None, log=print) -> Path:
     game = game_folder(game)
     ensure_closed()
@@ -232,21 +287,10 @@ def install(game: Path, archive: Path, chosen: set[str] | None = None, log=print
     changes = {}
     sdk_files = []
     with zipfile.ZipFile(archive) as zf:
-        entries = []
-        seen = set()
-        if sum(item.file_size for item in zf.infolist()) > 1 << 30:
-            raise ValueError("The payload exceeds the 1 GiB size limit.")
-        for item in zf.infolist():
-            if item.is_dir():
-                continue
-            name = item.filename
-            target = safe_target(game, name)
-            if (item.orig_filename != name or name.casefold() in seen
-                    or stat.S_ISLNK(item.external_attr >> 16)
-                    or "settings" in [p.lower() for p in PurePosixPath(name).parts]):
-                raise ValueError(f"Unsafe or duplicate payload path: {name}")
-            seen.add(name.casefold())
-            entries.append(item)
+        entries = _payload_entries(zf)
+        for name in entries:
+            safe_target(game, name)
+        seen = {name.casefold() for name in entries}
         required = {"oakgame/binaries/win64/dsound.dll", *(f"sdk_mods/{m}.sdkmod" for m in selected)}
         if not required <= seen:
             raise ValueError("Not a complete BL4 Fix payload (SDK or a selected mod is missing).")
@@ -254,15 +298,14 @@ def install(game: Path, archive: Path, chosen: set[str] | None = None, log=print
             loose = game / "sdk_mods" / mod_id
             if loose.exists():
                 raise ValueError(f"Move the old loose mod folder aside first: {loose}")
-        for item in entries:
-            name = item.filename
-            mod_id = PurePosixPath(name).stem if name.startswith("sdk_mods/") and name.endswith(".sdkmod") else None
+        for name, item in entries.items():
+            mod_id = _catalog_mod_id(name)
             owners = {m.id for m in catalog.MODS for folder in m.ui_dirs
                       if name.startswith(UI_ROOT + folder + "/")}
             if mod_id in catalog.BY_ID and mod_id not in selected or owners and not owners & selected:
                 continue
             changes[name] = zf.read(item)
-            if mod_id not in catalog.BY_ID and not name.startswith(UI_ROOT) and not name.startswith(PAK_ROOT) and name != "BL4Fix-README.txt":
+            if _is_sdk_file(name, mod_id):
                 sdk_files.append(name)
     files = list(changes)
     removed = set(catalog.BY_ID) - selected
@@ -332,16 +375,76 @@ def uninstall(game: Path, remove_sdk: bool = False, log=print) -> Path:
     return _apply_changes(game, changes, next_record, log)
 
 
+def _health_mods(game: Path, messages: list[str]) -> set[str]:
+    expected = set(catalog.REQUIRED)
+    try:
+        record = read_record(game)
+        if record:
+            mods = record.get("mods")
+            if not isinstance(mods, list) or any(not isinstance(m, str) or m not in catalog.BY_ID for m in mods):
+                raise ValueError("mods must be a list of known catalog IDs")
+            expected.update(mods)
+        else:
+            messages.append("No SteamOS installation record. Selected mod set is unknown.")
+    except (OSError, ValueError, RecursionError) as ex:
+        messages.append(f"Invalid or inaccessible installation record ({ex}). Using required and present catalog mods.")
+    present = set()
+    for mod_id in catalog.BY_ID:
+        name = f"sdk_mods/{mod_id}.sdkmod"
+        loose = f"sdk_mods/{mod_id}"
+        try:
+            if safe_target(game, name).is_file():
+                present.add(mod_id)
+        except (OSError, ValueError) as ex:
+            messages.append(f"Inaccessible or unsafe catalog mod: {name} ({ex})")
+        try:
+            if _unlinked_target(game, loose).is_dir():
+                messages.append(f"Loose catalog mod directory can shadow the packaged mod: {loose}")
+        except (OSError, ValueError) as ex:
+            messages.append(f"Inaccessible or unsafe loose mod path: {loose} ({ex})")
+    messages.append(f"Installed catalog mods: {len(present)} / {len(catalog.MODS)}")
+    return expected | present
+
+
+def _matches_payload(path: Path, zf: zipfile.ZipFile, member: zipfile.ZipInfo) -> bool:
+    with path.open("rb") as actual, zf.open(member) as expected:
+        matches = True
+        while chunk := expected.read(1 << 20):
+            matches = matches and actual.read(len(chunk)) == chunk
+        return matches and not actual.read(1)
+
+
 def health(game: Path, archive: Path) -> list[str]:
+    game = game.resolve(strict=True)
+    safe_target(game, GAME_EXE)
     game = game_folder(game)
     messages = [f"Game: {game}"]
-    mods = installed_mods(game)
-    messages.append(f"Installed catalog mods: {len(mods)} / {len(catalog.MODS)}")
-    with zipfile.ZipFile(archive) as zf:
-        for name in ("OakGame/Binaries/Win64/dsound.dll", "OakGame/Binaries/Win64/Plugins/unrealsdk.toml",
-                     PAK_ROOT + catalog.LINK_PAK, *(f"sdk_mods/{m}.sdkmod" for m in sorted(mods))):
-            path = safe_target(game, name)
-            messages.append(f"{'OK' if path.is_file() and path.read_bytes() == zf.read(name) else 'Missing or changed'}: {name}")
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            entries = _payload_entries(zf, check_directories=True)
+            missing = set(SDK_ANCHORS) - entries.keys()
+            if missing:
+                raise ValueError(f"Payload incomplete. Missing SDK members: {', '.join(sorted(missing))}")
+            mods = _health_mods(game, messages)
+            names = [name for name in entries if _is_sdk_file(name, _catalog_mod_id(name))]
+            names += [PAK_ROOT + catalog.LINK_PAK, *(f"sdk_mods/{m}.sdkmod" for m in sorted(mods))]
+            for name in names:
+                if name not in entries:
+                    messages.append(f"Payload incomplete. Missing member: {name}")
+                    continue
+                try:
+                    path = safe_target(game, name)
+                    if not path.is_file():
+                        messages.append(f"Missing: {name}")
+                    else:
+                        status = "Present" if _matches_payload(path, zf, entries[name]) else "Changed"
+                        messages.append(f"{status}: {name}")
+                except (OSError, ValueError) as ex:
+                    messages.append(f"Inaccessible or unsafe game file: {name} ({ex})")
+    except (zipfile.BadZipFile, RuntimeError, EOFError, zlib.error) as ex:
+        raise ValueError(f"Invalid payload archive: {ex}") from ex
+    messages.append("SDK runtime activation unverified. Launch the game, press tilde twice to open the SDK console "
+                    "and run mods, then press F7 to check the BL4 Fix menu.")
     return messages
 
 
