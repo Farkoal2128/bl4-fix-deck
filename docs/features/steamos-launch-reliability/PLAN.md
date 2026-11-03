@@ -1,6 +1,6 @@
 # SteamOS launch reliability
 
-**Status:** awaiting plan approval
+**Status:** approved — in execution · owner approved 2026-11-03
 **Review:** 2026-11-03 GO — independent reviewer gpt-6-astra/high; 0/1/2 findings; 3 edits applied; open 0/0/0; coverage complete (F1, F2, F3 resolved).
 **Home:** steamos-launch-reliability · none
 
