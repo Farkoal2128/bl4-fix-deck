@@ -73,7 +73,7 @@ Prerequisites: Linux, Python 3.11, Tk, Xvfb, PyInstaller 6.11.1 and build downlo
 
 | Step | Ticket(s) | Kind | Tier | Effort | Status |
 |---|---|---|---|---|---|
-| 🚦 G-P | G-P | owner approval / planning-config publication | seam | small | pending |
+| 🚦 G-P | G-P | owner approval / planning-config publication | seam | small | ✅ approved 2026-11-03; planning/configuration only published to origin/main at a012dcbc096fc83bc6f1eb5998099933da920c0e; remote verified; no implementation or release publication |
 | 1 | LR-101 | read-only SDK diagnostics | seam | medium | pending |
 | 2 | LR-102 | launch composition | seam | medium | pending |
 | 3 | LR-103 | GUI and CLI workflow | seam | medium | pending |
