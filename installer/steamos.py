@@ -26,7 +26,7 @@ GAME_EXE = "OakGame/Binaries/Win64/Borderlands4.exe"
 LAUNCH_OPTIONS = 'BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" %command% -pf_tricks=vcrun2022'
 _LAUNCH_FRAGMENT = re.compile(r"""[^ "'\\$`|&;<>()*?\[\]{}!#]+|"[^"\\$`]*"|'[^'\\$`]*'""")
 _LAUNCH_WORD = re.compile(f"(?:{_LAUNCH_FRAGMENT.pattern})+")
-_LAUNCH_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+_LAUNCH_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=")
 _DLL_NAME = re.compile(r"\*?[a-z0-9_][a-z0-9_-]*(?:\.dll)?", re.IGNORECASE | re.ASCII)
 
 
@@ -90,6 +90,8 @@ def compose_launch_options(existing: str) -> str:
         word = "".join(part[1:-1] if part.startswith(("'", '"')) else part for part in fragments)
         assignment = _LAUNCH_ASSIGNMENT.match(raw)
         name = word.partition("=")[0]
+        if leading and assignment and assignment[0].endswith("+="):
+            raise _launch_error(f"Unsupported append assignment to {name[:-1]}")
         if raw == "%command%":
             if placeholder:
                 raise _launch_error("Repeated %command% placeholder")

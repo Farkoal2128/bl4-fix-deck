@@ -129,6 +129,7 @@ class SteamOSTest(unittest.TestCase):
         for existing, item in (
             ("BL4FIX_STEAMOS=bad %command%", "BL4FIX_STEAMOS"),
             ("BL4FIX_STEAMOS= %command%", "BL4FIX_STEAMOS"),
+            ("EXTRA+=x %command%", "Unsupported append assignment to EXTRA"),
             ("BL4FIX_STEAMOS+=0 %command%", "Unsupported append assignment to BL4FIX_STEAMOS"),
             ('WINEDLLOVERRIDES+="dxgi=n" %command%', "Unsupported append assignment to WINEDLLOVERRIDES"),
             ("~/lsfg BL4FIX_STEAMOS+=0 %command%", "Unsupported append assignment to BL4FIX_STEAMOS"),
@@ -160,6 +161,7 @@ class SteamOSTest(unittest.TestCase):
             "%command% > file", "%command%; other", '%command% "a;b"', "%command% *.dll",
             "env -i %command%", '"/usr/bin/env" FOO=bar %command%', "if %command%",
             "command /usr/bin/env -i %command%", "exec /usr/bin/env -i %command%",
+            "EXTRA+=x env -i %command%", "FOO=bar EXTRA+='x y' /usr/bin/env -i %command%",
             "bash -c 'printf abc > result' %command%",
             """FOO=bar "/bin/bash" -c 'printf abc > result' %command%""",
             "eval 'printf abc > result' %command%", "busybox sh -c 'printf abc > result' %command%",
