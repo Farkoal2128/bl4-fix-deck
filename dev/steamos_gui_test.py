@@ -57,10 +57,12 @@ class WindowTest(unittest.TestCase):
 
     def test_apply_uses_real_backend_and_refreshes_mod_selection(self):
         self.app.select({"bl4_minimap"})
-        with patch.object(steamos, "ensure_closed"), patch.object(gui.messagebox, "showerror") as errors:
+        with patch.object(steamos, "ensure_closed"), patch.object(gui.messagebox, "showerror") as errors, \
+                patch.object(self.app, "refresh", wraps=self.app.refresh) as refresh:
             self.app.apply()
             self.wait_for_task()
         errors.assert_not_called()
+        refresh.assert_called_once()
         self.assertEqual(steamos.installed_mods(self.game), set(catalog.REQUIRED) | {"bl4_minimap"})
         self.assertIn("Files installed. Launch setup/SDK verification pending.", self.app.status.get())
         self.assertFalse(self.app.folder.instate(["disabled"]))
@@ -77,12 +79,14 @@ class WindowTest(unittest.TestCase):
             self.assertEqual(remove.call_args.args[:2], (self.game.resolve(), True))
 
     def test_worker_error_reenables_controls(self):
-        with patch.object(gui.messagebox, "showerror") as errors:
+        with patch.object(gui.messagebox, "showerror") as errors, \
+                patch.object(self.app, "refresh", wraps=self.app.refresh) as refresh:
             def failure():
                 raise RuntimeError("test failure")
             self.app.task("Testing", failure)
             self.wait_for_task()
             errors.assert_called_once()
+        refresh.assert_called_once()
         self.assertEqual(self.app.status.get(), "test failure")
         self.assertFalse(self.app.folder.instate(["disabled"]))
 
@@ -163,6 +167,39 @@ class WindowTest(unittest.TestCase):
         self.assertIn("Missing: sdk_mods/__main__.py", text)
         self.assertIn("SDK runtime activation unverified.", text)
         self.assertNotIn(launch, text)
+
+    def test_health_preserves_pending_selection_without_loading_settings_on_success_or_error(self):
+        for invalid_archive in (False, True):
+            with self.subTest(invalid_archive=invalid_archive):
+                self.app.select({"bl4_minimap"})
+                pending = {mod: value.get() for mod, value in self.app.mods.items()}
+                if invalid_archive:
+                    self.archive.write_bytes(b"not a ZIP archive")
+                with patch.object(self.app, "current_game", side_effect=AssertionError("unsafe root probe")), \
+                        patch.object(gui.shared.Config, "load", side_effect=AssertionError("settings read")) as settings, \
+                        patch.object(gui.messagebox, "showerror") as errors:
+                    self.app.health()
+                    self.wait_for_task()
+                settings.assert_not_called()
+                self.assertEqual({mod: value.get() for mod, value in self.app.mods.items()}, pending)
+                self.assertEqual(errors.call_count, int(invalid_archive))
+                self.assertFalse(self.app.folder.instate(["disabled"]))
+                self.assertTrue(all(not button.instate(["disabled"]) for button in self.app.buttons))
+                if invalid_archive:
+                    self.assertIn("Invalid payload archive", self.app.status.get())
+                else:
+                    self.assertEqual(self.app.status.get(), "Checking files complete.")
+
+    def test_health_uses_backend_link_safe_validation(self):
+        with patch.object(steamos, "safe_target", side_effect=ValueError("selected executable uses a link")) as safe, \
+                patch.object(gui.shared.Config, "load", side_effect=AssertionError("settings read")) as settings, \
+                patch.object(gui.messagebox, "showerror") as errors:
+            self.app.health()
+            self.wait_for_task()
+        safe.assert_called_once_with(self.game.resolve(), steamos.GAME_EXE)
+        settings.assert_not_called()
+        errors.assert_called_once()
+        self.assertEqual(self.app.status.get(), "selected executable uses a link")
 
     def test_shortcut_copies_executable_and_quotes_home(self):
         source = self.root / "fixture-binary"

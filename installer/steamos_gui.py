@@ -270,10 +270,11 @@ class App(tk.Tk):
     def log(self, message):
         self.events.put(("log", str(message)))
 
-    def task(self, label, action):
+    def task(self, label, action, refresh=True):
         if self.busy:
             return
         self.busy = True
+        self.refresh_after_task = refresh
         for button in [*self.buttons, *self.checks, self.folder]:
             button.state(["disabled"])
         self.status.set(label + "… Keep this window open.")
@@ -297,7 +298,8 @@ class App(tk.Tk):
                 self.busy = False
                 for button in [*self.buttons, *self.checks, self.folder]:
                     button.state(["!disabled"])
-                self.refresh()
+                if self.refresh_after_task:
+                    self.refresh()
                 self.status.set(message)
                 if kind == "error":
                     messagebox.showerror("BL4 Fix", message, parent=self)
@@ -336,8 +338,11 @@ class App(tk.Tk):
 
     def health(self):
         try:
-            game = self.current_game()
-            self.task("Checking files", lambda: self.log("File status (not runtime activation):\n" + "\n".join(steamos.health(game, self.archive))))
+            if not self.game.get().strip():
+                raise ValueError("Choose the Borderlands 4 folder containing OakGame.")
+            game = Path(self.game.get()).expanduser()
+            self.task("Checking files", lambda: self.log("File status (not runtime activation):\n" +
+                      "\n".join(steamos.health(game, self.archive))), refresh=False)
         except (OSError, ValueError) as ex:
             messagebox.showerror("BL4 Fix", str(ex), parent=self)
 
