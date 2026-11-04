@@ -610,15 +610,31 @@ def finish(game: Path) -> Path | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--game", type=Path, help="game folder containing OakGame; otherwise detect Steam libraries")
-    parser.add_argument("--archive", type=Path, default=payload_path())
+    parser.add_argument("--archive", type=Path)
+    parser.add_argument("--launch-options", metavar="EXISTING", help="print composed launch options only; pass an empty string for an empty Steam field")
     parser.add_argument("--list", action="store_true", help="list detected installations without changing files")
     parser.add_argument("--mods", help="comma-separated mod IDs; required mods are always installed")
     parser.add_argument("--uninstall", action="store_true")
     parser.add_argument("--remove-sdk", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--finish", action="store_true", help="apply a pending UI Link pak change, game closed")
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    for index, arg in enumerate(argv[:-1]):
+        if arg == "--":
+            break
+        if arg == "--launch-options":
+            # Keep literal dash-prefixed launch text out of argparse's option parser.
+            argv[index:index + 2] = ["--launch-options=" + argv[index + 1]]
+            break
+    args = parser.parse_args(argv)
     try:
+        if args.launch_options is not None:
+            if (args.game is not None or args.archive is not None or args.mods is not None or
+                    args.list or args.check or args.uninstall or args.remove_sdk or args.finish):
+                raise ValueError("--launch-options cannot be combined with game, archive, mod selection or operational options.")
+            print(compose_launch_options(args.launch_options))
+            return 0
+        args.archive = args.archive or payload_path()
         games = [args.game] if args.game else find_games(Path.home())
         if args.list:
             print("\n".join(map(str, games)) or "No Steam install found. Use --game with its folder.")
@@ -638,9 +654,10 @@ def main() -> int:
             print(f"Applied pending UI Link change. Backup: {backup}" if backup else "No pending UI Link change.")
             return 0
         backup = install(games[0], args.archive, None if args.mods is None else {m for m in args.mods.split(",") if m})
-        print(f"Installed. Replaced files are backed up in:\n{backup}")
-        print(f"Steam > Borderlands 4 > Properties > Launch Options:\n{LAUNCH_OPTIONS}")
-        print("Merge with any existing launch options. Map a rear button to F7 in Steam Input.")
+        print(f"Files installed. Launch setup and SDK runtime verification pending. Backup:\n{backup}")
+        print(f"Default for an empty Steam Launch Options field only:\n{LAUNCH_OPTIONS}")
+        print("Existing options: use System in the setup window to compose before pasting.")
+        print("Map a rear button to F7 in Steam Input after verifying the SDK console opens.")
         print("Updates: install a newer SteamOS package with the game closed. See STEAMOS.md for limitations.")
         return 0
     except (OSError, ValueError, RuntimeError, zipfile.BadZipFile) as ex:

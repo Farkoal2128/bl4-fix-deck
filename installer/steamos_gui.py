@@ -100,7 +100,9 @@ class App(tk.Tk):
         self.build_loadout()
         self.build_coop()
         self.build_system()
-        ttk.Label(self, textvariable=self.status, padding=(16, 9), wraplength=1000).pack(fill="x")
+        status = ttk.Label(self, textvariable=self.status, padding=(16, 9), wraplength=860)
+        status.pack(fill="x")
+        status.bind("<Configure>", lambda e: status.configure(wraplength=max(1, e.width - 32)))
         self.refresh()
         self.poll_id = self.after(50, self.drain)
 
@@ -163,17 +165,23 @@ class App(tk.Tk):
 
     def build_system(self):
         ttk.Label(self.system, text="Steam launch options", font=("DejaVu Sans", 12, "bold")).pack(anchor="w")
-        options = ttk.Entry(self.system)
-        options.insert(0, steamos.LAUNCH_OPTIONS)
-        options.state(["readonly"])
-        options.pack(fill="x", pady=8)
+        self.launch_original = tk.StringVar()
+        self.launch_composed = tk.StringVar(value=steamos.compose_launch_options(""))
+        ttk.Label(self.system, text="Original Steam launch options (empty = Steam currently has no options)").pack(anchor="w")
+        self.launch_input = ttk.Entry(self.system, textvariable=self.launch_original)
+        self.launch_input.pack(fill="x", pady=(2, 4))
+        ttk.Label(self.system, text="Composed preview (read-only; cleared when original input changes)").pack(anchor="w")
+        self.launch_preview = ttk.Entry(self.system, textvariable=self.launch_composed, state="readonly")
+        self.launch_preview.pack(fill="x", pady=(2, 4))
+        self.launch_original.trace_add("write", self.launch_edited)
         row = ttk.Frame(self.system)
         row.pack(fill="x")
+        self.button(row, "Preview", self.preview_options).pack(side="left", padx=(0, 8))
         self.button(row, "Copy launch options", self.copy_options).pack(side="left")
         self.button(row, "Launch game", lambda: self.open(f"steam://rungameid/{steamos.APP_ID}")).pack(side="left", padx=8)
-        ttk.Label(self.system, wraplength=940, text="Paste in Steam → Borderlands 4 → Properties → Launch Options. "
-                  "Merge with existing options; keep one %command%. Map a rear grip to F7 in Steam Input. "
-                  "Windows automatic save restores and in-game file updates are unavailable; use Desktop Mode.").pack(anchor="w", pady=10)
+        ttk.Label(self.system, wraplength=810, text="Paste composed text in Steam → Borderlands 4 → Properties → Launch Options. "
+                  "Unsupported syntax: keep your original text and merge manually. Wrapper environment forwarding is unverified. "
+                  "Map a rear grip to F7. Automatic save restores/file updates are unavailable; use Desktop Mode.").pack(anchor="w", pady=6)
         shortcut = ttk.Checkbutton(self.system, text="Add BL4 Fix Setup to the application menu after Apply", variable=self.shortcut)
         shortcut.pack(anchor="w")
         if not getattr(sys, "frozen", False):
@@ -185,8 +193,8 @@ class App(tk.Tk):
         self.button(row, "Health check", self.health).pack(side="left", padx=8)
         self.button(row, "Finish pending UI change", self.finish).pack(side="left")
         self.button(row, "Uninstall…", self.uninstall).pack(side="right")
-        self.log_box = tk.Text(self.system, height=9, wrap="word", state="disabled", font=("DejaVu Sans Mono", 9))
-        self.log_box.pack(fill="both", expand=True, pady=(10, 0))
+        self.log_box = tk.Text(self.system, height=1, wrap="word", state="disabled", font=("DejaVu Sans Mono", 9))
+        self.log_box.pack(fill="both", expand=True, pady=(6, 0))
 
     def current_game(self):
         if not self.game.get().strip():
@@ -311,7 +319,7 @@ class App(tk.Tk):
                         add_shortcut(Path.home(), Path(sys.executable))
                     except (OSError, ValueError) as ex:
                         self.log(f"Installed, but could not create the app-menu shortcut: {ex}")
-                return f"Installed. Backup: {backup}. Copy the Steam launch options on System."
+                return f"Files installed. Launch setup/SDK verification pending. Backup: {backup}. Use System."
             self.task("Installing", run)
         except (OSError, ValueError) as ex:
             messagebox.showerror("BL4 Fix", str(ex), parent=self)
@@ -329,7 +337,7 @@ class App(tk.Tk):
     def health(self):
         try:
             game = self.current_game()
-            self.task("Checking files", lambda: self.log("\n".join(steamos.health(game, self.archive))))
+            self.task("Checking files", lambda: self.log("File status (not runtime activation):\n" + "\n".join(steamos.health(game, self.archive))))
         except (OSError, ValueError) as ex:
             messagebox.showerror("BL4 Fix", str(ex), parent=self)
 
@@ -340,10 +348,29 @@ class App(tk.Tk):
         except (OSError, ValueError) as ex:
             messagebox.showerror("BL4 Fix", str(ex), parent=self)
 
+    def launch_edited(self, *_args):
+        self.launch_composed.set("")
+        if not self.busy:
+            self.status.set("Original input changed; preview cleared. Preview or copy to validate.")
+
+    def preview_options(self):
+        try:
+            composed = steamos.compose_launch_options(self.launch_original.get())
+        except ValueError as ex:
+            self.launch_composed.set("")
+            self.status.set(str(ex))
+            return None
+        self.launch_composed.set(composed)
+        self.status.set("Preview ready. Wrapper environment forwarding and SDK activation remain unverified.")
+        return composed
+
     def copy_options(self):
+        composed = self.preview_options()
+        if composed is None:
+            return
         self.clipboard_clear()
-        self.clipboard_append(steamos.LAUNCH_OPTIONS)
-        self.status.set("Copied. Paste into Steam launch options and merge with any existing options.")
+        self.clipboard_append(composed)
+        self.status.set("Copied composed options. Paste into Steam Launch Options, then verify the SDK console and F7 menu.")
 
     def open(self, target):
         try:
