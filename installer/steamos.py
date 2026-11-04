@@ -618,7 +618,15 @@ def main() -> int:
     parser.add_argument("--remove-sdk", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--finish", action="store_true", help="apply a pending UI Link pak change, game closed")
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    for index, arg in enumerate(argv[:-1]):
+        if arg == "--":
+            break
+        if arg == "--launch-options":
+            # Keep literal dash-prefixed launch text out of argparse's option parser.
+            argv[index:index + 2] = ["--launch-options=" + argv[index + 1]]
+            break
+    args = parser.parse_args(argv)
     try:
         if args.launch_options is not None:
             if (args.game is not None or args.archive is not None or args.mods is not None or
@@ -648,7 +656,7 @@ def main() -> int:
         backup = install(games[0], args.archive, None if args.mods is None else {m for m in args.mods.split(",") if m})
         print(f"Files installed. Launch setup and SDK runtime verification pending. Backup:\n{backup}")
         print(f"Default for an empty Steam Launch Options field only:\n{LAUNCH_OPTIONS}")
-        print('Existing options: use System in the setup window or --launch-options "EXISTING" to compose before pasting.')
+        print("Existing options: use System in the setup window to compose before pasting.")
         print("Map a rear button to F7 in Steam Input after verifying the SDK console opens.")
         print("Updates: install a newer SteamOS package with the game closed. See STEAMOS.md for limitations.")
         return 0

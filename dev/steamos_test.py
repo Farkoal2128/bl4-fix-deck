@@ -197,15 +197,18 @@ class SteamOSTest(unittest.TestCase):
                 self.assertEqual(error, "")
 
     def test_launch_cli_refusal_never_runs_operations(self):
-        code, output, error = self.launch_cli("%command% && unsafe")
-        self.assertEqual((code, output), (1, ""))
-        self.assertIn("manually", error)
-        for options in (("--game", "missing"), ("--archive", "missing.zip"), ("--mods", ""),
-                        ("--list",), ("--check",), ("--uninstall",), ("--remove-sdk",), ("--finish",)):
-            with self.subTest(options=options):
-                code, output, error = self.launch_cli("", *options)
+        for existing in ("%command% && unsafe", "-novid", "--uninstall", "$(do-not-execute)"):
+            with self.subTest(existing=existing):
+                code, output, error = self.launch_cli(existing)
                 self.assertEqual((code, output), (1, ""))
-                self.assertIn("cannot be combined", error)
+                self.assertIn("manually", error)
+        for existing in ("", "-novid", "%command%"):
+            for options in (("--game", "missing"), ("--archive", "missing.zip"), ("--mods", ""),
+                            ("--list",), ("--check",), ("--uninstall",), ("--remove-sdk",), ("--finish",)):
+                with self.subTest(existing=existing, options=options):
+                    code, output, error = self.launch_cli(existing, *options)
+                    self.assertEqual((code, output), (1, ""))
+                    self.assertIn("cannot be combined", error)
 
     def test_install_cli_labels_empty_default_and_pending_activation(self):
         with patch.object(sys, "argv", ["steamos.py", "--game", str(self.game)]), \
@@ -216,7 +219,8 @@ class SteamOSTest(unittest.TestCase):
         install.assert_called_once_with(self.game, steamos.payload_path(), None)
         self.assertIn("Files installed. Launch setup and SDK runtime verification pending.", stdout.getvalue())
         self.assertIn("Default for an empty Steam Launch Options field only:", stdout.getvalue())
-        self.assertIn('--launch-options "EXISTING"', stdout.getvalue())
+        self.assertIn("Existing options: use System in the setup window to compose before pasting.", stdout.getvalue())
+        self.assertNotIn('--launch-options "EXISTING"', stdout.getvalue())
 
     def test_health_checks_sdk_dependencies(self):
         self.health_payload()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import zipfile
@@ -136,6 +137,19 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(self.app.launch_original.get(), original)
         self.assertEqual(self.app.clipboard_get(), original_clipboard)
         self.assertIn("manually", self.app.status.get())
+
+    def test_launch_edit_keeps_active_task_status_and_clears_preview(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        self.app.task("Installing", lambda: release.wait(5))
+        status = self.app.status.get()
+        self.app.launch_original.set("~/lsfg %command%")
+        self.assertTrue(self.app.busy)
+        self.assertEqual(self.app.status.get(), status)
+        self.assertIn("Keep this window open.", status)
+        self.assertEqual(self.app.launch_composed.get(), "")
+        release.set()
+        self.wait_for_task()
 
     def test_health_separates_files_from_activation_without_logging_launch_text(self):
         launch = "LSFG_PROCESS=private-wrapper %command%"

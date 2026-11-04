@@ -350,7 +350,8 @@ class App(tk.Tk):
 
     def launch_edited(self, *_args):
         self.launch_composed.set("")
-        self.status.set("Original input changed; preview cleared. Preview or copy to validate.")
+        if not self.busy:
+            self.status.set("Original input changed; preview cleared. Preview or copy to validate.")
 
     def preview_options(self):
         try:
