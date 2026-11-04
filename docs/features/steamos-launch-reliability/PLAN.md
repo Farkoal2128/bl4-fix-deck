@@ -78,7 +78,7 @@ Prerequisites: Linux, Python 3.11, Tk, Xvfb, PyInstaller 6.11.1 and build downlo
 | 2 | LR-102 | launch composition | seam | medium | ✅ done · bfdb8ca · GO review102 r3 |
 | 3 | LR-103 | GUI and CLI workflow | seam | medium | ✅ done · 83758c1; integration correction e6fbb51 · GO review103; focused PASS f2cef2c tree 8397c9f, successor adds inspected LR-104 docs only |
 | 4 | LR-104 | user instructions | seam | small | ✅ done · 1a276f3; integration correction c40e41b · GO review104; focused PASS 9e1fd92 tree 574cdd7; successor includes LR-103 correction |
-| 🚦 G-T | G-T | final technical checkpoint | seam | medium | pending |
+| 🚦 G-T | G-T | final technical checkpoint | seam | medium | pending · integration GO for e1af445 tree 071b661; full Linux matrix and packaged inspection held: Linux environment unavailable on this host |
 | 🚦 G-H | G-H | physical Deck acceptance | seam | medium | pending |
 | 🚦 G-D | G-D | implementation delivery decision | seam | small | pending |
 
