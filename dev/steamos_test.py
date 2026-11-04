@@ -73,6 +73,108 @@ class SteamOSTest(unittest.TestCase):
         })
         return self.payload()
 
+    def assert_launch_options(self, existing, expected):
+        result = steamos.compose_launch_options(existing)
+        self.assertEqual(result, expected)
+        self.assertEqual(steamos.compose_launch_options(result), result)
+
+    def test_launch_empty_and_idempotent(self):
+        self.payload()
+        steam_config = self.root / "userdata/config/localconfig.vdf"
+        self.put(steam_config, b"original launch options")
+        before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        with (patch("subprocess.Popen", side_effect=AssertionError("process")),
+              patch("subprocess.run", side_effect=AssertionError("process")),
+              patch("os.system", side_effect=AssertionError("shell"))):
+            for existing in ("", "   ", "%command%", steamos.LAUNCH_OPTIONS):
+                with self.subTest(existing=existing):
+                    self.assert_launch_options(existing, steamos.LAUNCH_OPTIONS)
+            with self.assertRaisesRegex(ValueError, "merge .* manually"):
+                steamos.compose_launch_options("%command% && touch localconfig.vdf")
+        self.assertEqual({path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}, before)
+
+    def test_launch_lsfg_environment_and_wrapper(self):
+        for prefix in ("LSFG_PROCESS=decky-lsfg-vk", "~/lsfg", '"/home/deck/LSFG wrapper" --verbose'):
+            with self.subTest(prefix=prefix):
+                self.assert_launch_options(
+                    f"{prefix} %command%",
+                    f'BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" {prefix} %command% -pf_tricks=vcrun2022',
+                )
+
+    def test_launch_preserves_quotes_spacing_and_args(self):
+        existing = """  EXTRA='spaces here'  BL4FIX_STEAMOS="0" ~/lsfg --path="A B"   %command%  '--label=C D'  """
+        expected = ("""  WINEDLLOVERRIDES="dsound=n,b" EXTRA='spaces here'  BL4FIX_STEAMOS="1" """
+                    """~/lsfg --path="A B"   %command%  '--label=C D' -pf_tricks=vcrun2022  """)
+        self.assert_launch_options(existing, expected)
+        existing = """  BL4FIX_STEAMOS='1' WINEDLLOVERRIDES=dsound=n,b %command%  "-pf_tricks=vcrun2022" --arg  """
+        self.assert_launch_options(existing, existing)
+
+    def test_launch_merges_dll_overrides(self):
+        for original, merged in (
+            ('"dxgi=n,b;dsound=b;version=n"', '"dxgi=n,b;dsound=n,b;version=n"'),
+            ("dsound=b", "dsound=n,b"),
+            ("dxgi=b", '"dxgi=b;dsound=n,b"'),
+            ("'dxgi,d3d11=b;version='", "'dxgi,d3d11=b;version=;dsound=n,b'"),
+            ("'dxgi=n; DSound.DLL = b,n;version=n'", "'dxgi=n; DSound.DLL =n,b;version=n'"),
+            ('"DSOUND=NATIVE, BUILTIN;dxgi=n"', '"DSOUND=NATIVE, BUILTIN;dxgi=n"'),
+            ('""', '"dsound=n,b"'),
+        ):
+            with self.subTest(original=original):
+                self.assert_launch_options(
+                    f"WINEDLLOVERRIDES={original} %command%",
+                    f"BL4FIX_STEAMOS=1 WINEDLLOVERRIDES={merged} %command% -pf_tricks=vcrun2022",
+                )
+
+    def test_launch_owned_conflicts(self):
+        for existing, item in (
+            ("BL4FIX_STEAMOS=bad %command%", "BL4FIX_STEAMOS"),
+            ("BL4FIX_STEAMOS= %command%", "BL4FIX_STEAMOS"),
+            ("EXTRA+=x %command%", "Unsupported append assignment to EXTRA"),
+            ("BL4FIX_STEAMOS+=0 %command%", "Unsupported append assignment to BL4FIX_STEAMOS"),
+            ('WINEDLLOVERRIDES+="dxgi=n" %command%', "Unsupported append assignment to WINEDLLOVERRIDES"),
+            ("~/lsfg BL4FIX_STEAMOS+=0 %command%", "Unsupported append assignment to BL4FIX_STEAMOS"),
+            ("BL4FIX_STEAMOS=1 BL4FIX_STEAMOS=1 %command%", "Repeated BL4FIX_STEAMOS"),
+            ("~/lsfg BL4FIX_STEAMOS=0 %command%", "BL4FIX_STEAMOS must be a leading"),
+            ('"BL4FIX_STEAMOS=1" %command%', "BL4FIX_STEAMOS must be a leading"),
+            ("%command% WINEDLLOVERRIDES=dxgi=n", "WINEDLLOVERRIDES must be a leading"),
+            ("WINEDLLOVERRIDES=dxgi=n WINEDLLOVERRIDES=dsound=n,b %command%", "Repeated WINEDLLOVERRIDES"),
+            ('WINEDLLOVERRIDES="dxgi,DSOUND.dll=b" %command%', "Grouped or wildcard dsound"),
+            ('WINEDLLOVERRIDES="*dsound=b" %command%', "Grouped or wildcard dsound"),
+            ('WINEDLLOVERRIDES="dsound=n;DSOUND.dll=b" %command%', "Repeated DLL"),
+            ('WINEDLLOVERRIDES="dsound=n,n" %command%', "Repeated load mode"),
+            ('WINEDLLOVERRIDES="dxgi,=b" %command%', "Malformed WINEDLLOVERRIDES"),
+            ('WINEDLLOVERRIDES="bad/name=b" %command%', "Malformed WINEDLLOVERRIDES"),
+            ('WINEDLLOVERRIDES="dxgi=bogus" %command%', "Malformed WINEDLLOVERRIDES"),
+            ("%command% -pf_tricks=vcrun2019", "Conflicting or repeated -pf_tricks"),
+            ("%command% -pf_tricks vcrun2022", "Conflicting or repeated -pf_tricks"),
+            ("%command% -pf_tricks=vcrun2022 -pf_tricks=vcrun2022", "Conflicting or repeated -pf_tricks"),
+        ):
+            with self.subTest(existing=existing), self.assertRaisesRegex(ValueError, item + ".*merge .* manually"):
+                steamos.compose_launch_options(existing)
+
+    def test_launch_rejects_unsupported_shell(self):
+        for existing in (
+            "~/lsfg", "'%command%'", 'arg="%command%"', "%command% %command%", "%com'mand%'",
+            "%command%\0", "%command%\n", "%command%\t", r"/path\ with\ spaces %command%",
+            '"unterminated %command%', "%command% $(whoami)", "%command% `whoami`",
+            "LSFG=$VAR %command%", '%command% "$VAR"', "%command% | other", "%command% && other",
+            "%command% > file", "%command%; other", '%command% "a;b"', "%command% *.dll",
+            "env -i %command%", '"/usr/bin/env" FOO=bar %command%', "if %command%",
+            "command /usr/bin/env -i %command%", "exec /usr/bin/env -i %command%",
+            "EXTRA+=x env -i %command%", "FOO=bar EXTRA+='x y' /usr/bin/env -i %command%",
+            "bash -c 'printf abc > result' %command%",
+            """FOO=bar "/bin/bash" -c 'printf abc > result' %command%""",
+            "eval 'printf abc > result' %command%", "busybox sh -c 'printf abc > result' %command%",
+        ):
+            with self.subTest(existing=existing), self.assertRaisesRegex(ValueError, "merge .* manually"):
+                steamos.compose_launch_options(existing)
+
+    def test_launch_rejects_runtime_trick_before_placeholder(self):
+        for prefix in ("-pf_tricks=vcrun2022", "~/lsfg -pf_tricks=vcrun2022",
+                       "~/lsfg '-pf_tricks=vcrun2019'", "~/lsfg -pf_tricks"):
+            with self.subTest(prefix=prefix), self.assertRaisesRegex(ValueError, "-pf_tricks before %command%"):
+                steamos.compose_launch_options(f"{prefix} %command%")
+
     def test_health_checks_sdk_dependencies(self):
         self.health_payload()
         for name, content in self.files.items():
