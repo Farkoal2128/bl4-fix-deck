@@ -24,6 +24,132 @@ import movies
 APP_ID = "1285190"
 GAME_EXE = "OakGame/Binaries/Win64/Borderlands4.exe"
 LAUNCH_OPTIONS = 'BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" %command% -pf_tricks=vcrun2022'
+_LAUNCH_FRAGMENT = re.compile(r"""[^ "'\\$`|&;<>()*?\[\]{}!#]+|"[^"\\$`]*"|'[^'\\$`]*'""")
+_LAUNCH_WORD = re.compile(f"(?:{_LAUNCH_FRAGMENT.pattern})+")
+_LAUNCH_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+_DLL_NAME = re.compile(r"\*?[a-z0-9_][a-z0-9_-]*(?:\.dll)?", re.IGNORECASE | re.ASCII)
+
+
+def _launch_error(item: str) -> ValueError:
+    return ValueError(f"{item}. Keep your original launch options and merge the BL4 Fix settings manually.")
+
+
+def _merge_dll_overrides(value: str) -> str:
+    if not value:
+        return "dsound=n,b"
+    entries = value.split(";")
+    seen = set()
+    for index, entry in enumerate(entries):
+        names, equals, order = entry.partition("=")
+        dlls = [name.strip() for name in names.split(",")]
+        modes = [mode.strip().lower() for mode in order.split(",")] if order.strip() else []
+        if (not equals or not all(_DLL_NAME.fullmatch(name) for name in dlls)
+                or not all(mode in {"n", "native", "b", "builtin"} for mode in modes)):
+            raise _launch_error("Malformed WINEDLLOVERRIDES entry")
+        load_order = [mode[0] for mode in modes]
+        if len(set(load_order)) != len(load_order):
+            raise _launch_error("Repeated load mode in WINEDLLOVERRIDES")
+        for name in dlls:
+            key = name.lower().removesuffix(".dll")
+            if key in seen:
+                raise _launch_error(f"Repeated DLL in WINEDLLOVERRIDES ({name})")
+            seen.add(key)
+            if key.lstrip("*") == "dsound":
+                if len(dlls) != 1 or key.startswith("*"):
+                    raise _launch_error("Grouped or wildcard dsound entry in WINEDLLOVERRIDES")
+                if load_order != ["n", "b"]:
+                    entries[index] = names + "=n,b"
+    if "dsound" not in seen:
+        entries.append("dsound=n,b")
+    return ";".join(entries)
+
+
+def compose_launch_options(existing: str) -> str:
+    """Compose BL4 settings with a bounded subset of literal Steam launch options."""
+    if not existing.strip(" "):
+        return LAUNCH_OPTIONS
+    if not existing.isprintable():
+        raise _launch_error("Unsupported control character or non-space separator")
+
+    flag, overrides = "BL4FIX_STEAMOS", "WINEDLLOVERRIDES"
+    runtime = "-pf_tricks=vcrun2022"
+    edits = []
+    owned = set()
+    placeholder = runtime_seen = False
+    leading = True
+    start = len(existing) - len(existing.lstrip(" "))
+    end = len(existing.rstrip(" "))
+    position = start
+    while position < end:
+        match = _LAUNCH_WORD.match(existing, position)
+        boundary = match.end() if match else position
+        if not match or (boundary < end and existing[boundary] != " "):
+            raise _launch_error(f"Unsupported {existing[boundary]!r} syntax at character {boundary + 1}")
+        raw = match[0]
+        fragments = _LAUNCH_FRAGMENT.findall(raw)
+        word = "".join(part[1:-1] if part.startswith(("'", '"')) else part for part in fragments)
+        assignment = _LAUNCH_ASSIGNMENT.match(raw)
+        name = word.partition("=")[0]
+        if raw == "%command%":
+            if placeholder:
+                raise _launch_error("Repeated %command% placeholder")
+            placeholder = True
+            leading = False
+        elif "%command%" in raw or "%command%" in word:
+            raise _launch_error("Quoted or embedded %command% placeholder")
+        elif name in {flag, overrides} and "=" in word:
+            if not leading or not assignment:
+                raise _launch_error(f"{name} must be a leading unquoted variable assignment")
+            if name in owned:
+                raise _launch_error(f"Repeated {name} assignment")
+            owned.add(name)
+            raw_value = raw[assignment.end():]
+            quote = raw_value[0] if raw_value.startswith(("'", '"')) else ""
+            if len(fragments) > (2 if quote else 1):
+                raise _launch_error(f"Unsupported quoting in {name}")
+            value = word[len(name) + 1:]
+            if name == flag:
+                if value not in {"0", "1"}:
+                    raise _launch_error(f"Conflicting {flag} value")
+                replacement = "1"
+            else:
+                replacement = _merge_dll_overrides(value)
+                if ";" in replacement and not quote:
+                    quote = '"'
+            if replacement != value:
+                edits.append((position, match.end(), f"{name}={quote}{replacement}{quote}"))
+        elif ";" in word:
+            raise _launch_error("Semicolons are only supported inside a quoted WINEDLLOVERRIDES value")
+        elif name == "-pf_tricks":
+            if not placeholder:
+                raise _launch_error("-pf_tricks before %command%")
+            if word != runtime or runtime_seen:
+                raise _launch_error("Conflicting or repeated -pf_tricks argument")
+            runtime_seen = True
+        elif leading and not assignment:
+            if word.rsplit("/", 1)[-1] == "env":
+                raise _launch_error("Unsupported env wrapper")
+            if not word or raw in {"if", "then", "else", "elif", "fi", "for", "in", "while",
+                                   "until", "do", "done", "case", "esac", "select", "function", "time"}:
+                raise _launch_error("Unsupported shell wrapper")
+            leading = False
+        position = match.end()
+        while position < end and existing[position] == " ":
+            position += 1
+
+    if not placeholder:
+        raise _launch_error("Missing %command% placeholder")
+    prefix = [setting for name, setting in (
+        (flag, f"{flag}=1"), (overrides, f'{overrides}="dsound=n,b"'),
+    ) if name not in owned]
+    if prefix:
+        edits.append((start, start, " ".join(prefix) + " "))
+    if not runtime_seen:
+        edits.append((end, end, " " + runtime))
+    # Apply edits from right to left so their original offsets stay valid.
+    for first, last, replacement in sorted(edits, reverse=True):
+        existing = existing[:first] + replacement + existing[last:]
+    return existing
 
 
 def find_games(home: Path) -> list[Path]:
