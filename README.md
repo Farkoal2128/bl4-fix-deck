@@ -67,8 +67,46 @@ app. For this fork's installer, use [SteamOS installation](#steam-deck--steamos-
 3. Select the detected game folder (internal storage or SD card), tick the mods you
    want and press **Apply selection**. Direct Connect and Mod Menu are required.
    Unticked mods are removed; your saves, settings and other mods are kept.
-4. On **System**, press **Copy launch options** and paste them into Borderlands 4's
-   Steam Properties. Merge with existing options. Launch through Steam.
+4. On **System**, run **Health check** and compare its root with Steam's **Manage >
+   Browse local files**. File presence/content does not establish SDK activation.
+   Save a copy of the complete current Steam **Launch Options** text, then
+   paste it into **Original Steam launch options**; leave this empty only if Steam's
+   field is empty. Press **Preview**, inspect the composed text, then **Copy launch
+   options** and paste into Borderlands 4's Steam Properties. Launch through Steam.
+5. After a fresh launch, press tilde twice to open the **SDK console** and run
+   `mods`; then check **F7** for BL4 Fix's menu. Installed files and an absent F7
+   menu alone do not establish whether the SDK loaded.
+
+Empty input produces the default below. Existing lsfg launch lines are composed
+instead of replaced; these are example inputs, not identification of your plugin:
+
+| Original input | Composed preview |
+|---|---|
+| Empty | `BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" %command% -pf_tricks=vcrun2022` |
+| `LSFG_PROCESS=decky-lsfg-vk %command%` | `BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" LSFG_PROCESS=decky-lsfg-vk %command% -pf_tricks=vcrun2022` |
+| `~/lsfg %command%` | `BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" ~/lsfg %command% -pf_tricks=vcrun2022` |
+| `WINEDLLOVERRIDES="dxgi=n,b;dsound=b;version=n" %command%` | `BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dxgi=n,b;dsound=n,b;version=n" %command% -pf_tricks=vcrun2022` |
+
+The [SteamOS guide](docs/STEAMOS.md#launch-options-and-lsfg) links the lsfg sources
+and explains manual merging. The composer preserves supported literal wrapper text,
+arguments and non-dsound overrides; it cannot verify that a wrapper forwards the
+environment. Complex shell syntax, expansions, duplicate/conflicting settings and
+other `-pf_tricks` values are refused: the original input and clipboard stay intact.
+Keep the original and merge manually rather than replacing it with the empty-field
+default. To undo an experiment, close the game and restore the saved original text
+exactly in Steam, then relaunch.
+
+In the extracted source package, `python3 install.py --launch-options '~/lsfg %command%'`
+prints composed text only; `python3 install.py --launch-options ''` uses the empty-field
+default. This mode needs no game installation and cannot be combined with operational
+options. It never applies the result to Steam.
+
+If loading fails, collect the complete current launch text, selected Proton version,
+Steam's local-files path and whether the SDK console opens before deciding the cause.
+The [SDK FAQ](https://bl-sdk.github.io/oak2-mod-db/faq/#can-i-use-this-on-steam-decklinuxmac)
+warns that working Proton builds vary; the runtime argument is not proof that
+`vcrun2022` is available. The installer does not install runtimes, switch Proton,
+change Decky, or delete prefixes/saves. Share only relevant redacted errors if needed.
 
 The app also has **Repair**, **Health check**, **Uninstall**, friends and host-port
 settings, and an optional application-menu shortcut. Replaced and removed files are
