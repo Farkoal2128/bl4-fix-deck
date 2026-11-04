@@ -38,20 +38,18 @@ testing on the device; this is not a claim of hardware qualification.
    Direct Connect page; close the game before changing them. Apply can copy the
    standalone app into `~/.local/share/bl4fix/` and add **BL4 Fix Setup** to the
    application menu, so you can return after deleting the download folder.
-3. On **System**, press **Copy launch options**, then paste in Steam under
-   **Borderlands 4 > Properties > General > Launch Options**:
-
-   ```text
-   BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" %command% -pf_tricks=vcrun2022
-   ```
-
-   Keep your existing options: combine environment variables before the single
-   `%command%`, and game arguments after it. Merge `dsound=n,b` into an existing
-   `WINEDLLOVERRIDES` value with a semicolon. `BL4FIX_STEAMOS=1` selects this
-   fork's SteamOS behavior; keep it even when the SDK already loads successfully.
-   The dsound override and runtime argument follow the
-   [SDK's Proton instructions](https://bl-sdk.github.io/oak2-mod-db/).
-4. Run the game through Steam. Map a rear grip button to **F7** in **Steam Input**
+3. On **System**, run **Health check** and compare its selected game root with
+   Steam's **Manage > Browse local files**. Its file results do not establish SDK
+   activation. Save a copy of the complete text in **Borderlands 4 > Properties >
+   General > Launch Options** before editing it, then paste it into **Original Steam
+   launch options**. Leave this input empty only if Steam's field is empty. Press
+   **Preview**, inspect **Composed preview**, then press **Copy launch options**
+   and paste the result into Steam. Copy validates again; editing the original
+   clears the old preview. The app does not save or execute this text or edit Steam
+   configuration. See [Launch options and lsfg](#launch-options-and-lsfg) below.
+4. Launch through Steam, press tilde twice for the SDK console and run `mods`, then check
+   **F7** for BL4 Fix's menu. These are separate checks; see [troubleshooting](#installed-files-but-no-mods).
+   Map a rear grip button to **F7** in **Steam Input**
    to open MODS, and optionally another to **F6** for Direct Connect. Use the right
    trackpad as a mouse and its click as left mouse for the HTML menus. **Steam + X**
    opens the on-screen keyboard. These menus do not yet have a tested Deck layout.
@@ -70,10 +68,74 @@ installs, `--game "..."` selects one, `--mods bl4_minimap,bl4_respec` selects op
 mods, `--check` checks files, and `--uninstall [--remove-sdk]` removes the installation.
 The source package uses the same backend as the standalone app.
 
+Its print-only launch composer needs no game installation or payload and does not
+change Steam. From the extracted source-package folder:
+
+```sh
+python3 install.py --launch-options ''
+python3 install.py --launch-options 'LSFG_PROCESS=decky-lsfg-vk %command%'
+python3 install.py --launch-options '~/lsfg %command%'
+```
+
+The outer shell quotes pass the whole input literally; they are not part of the
+Steam field. Empty input selects the empty-field default. Unsupported input returns
+an error instead of a composed line. Do not combine `--launch-options` with `--game`,
+`--archive`, `--mods`, `--list`, `--check`, `--finish`, `--uninstall` or `--remove-sdk`.
+
 **Manual extraction:** for a file-only install, open the inner
 `BL4Fix-Manual.zip` in Ark and extract its contents into the game folder with the
 game closed, then set the same launch options. This method does not create the
 installer's backup or validate existing files; copy conflicting files aside first.
+
+## Launch options and lsfg
+
+For an **empty Steam field only**, the preview is:
+
+```text
+BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" %command% -pf_tricks=vcrun2022
+```
+
+`BL4FIX_STEAMOS=1` selects this fork's SteamOS behavior; retain it even if the SDK
+already loads. The dsound override and runtime argument follow the
+[SDK's Proton instructions](https://bl-sdk.github.io/oak2-mod-db/).
+
+Always paste your actual complete options. These two examples come from the
+[Decky fork README](https://github.com/jbragado/decky-lossless-scaling-vk) and the
+[experimental fork's public-plugin examples](https://github.com/PacificSilent/decky-lsfg-vk-experimental/blob/main/README.md).
+They do not identify your installed plugin/version or prove compatibility:
+
+| Original input | Composed preview |
+|---|---|
+| `LSFG_PROCESS=decky-lsfg-vk %command%` | `BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" LSFG_PROCESS=decky-lsfg-vk %command% -pf_tricks=vcrun2022` |
+| `~/lsfg %command%` | `BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" ~/lsfg %command% -pf_tricks=vcrun2022` |
+| `WINEDLLOVERRIDES="dxgi=n,b;dsound=b;version=n" %command%` | `BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dxgi=n,b;dsound=n,b;version=n" %command% -pf_tricks=vcrun2022` |
+
+The composer keeps supported literal leading environment assignments, a wrapper
+and its arguments, one unquoted standalone `%command%`, and game arguments. It
+preserves unrelated spacing, quotes, tilde paths and non-dsound DLL overrides.
+It adds or normalizes `BL4FIX_STEAMOS=1`, merges only `dsound=n,b` into one Wine
+override, and keeps/adds one `-pf_tricks=vcrun2022` after `%command%`. Repeating
+composition leaves the result unchanged. Preserving a wrapper does not verify
+that it forwards these environment settings to the game or that lsfg stays active.
+
+The composer refuses ambiguous input: shell operators, expansion such as `$VAR`
+or `$(...)`, backticks, multiline/control characters, `env`/shell wrappers,
+quoted/multiple/missing `%command%`, duplicate or conflicting BL4/Wine settings,
+grouped dsound entries, and other/repeated `-pf_tricks` arguments (or any before
+`%command%`). On refusal it keeps the original input and clipboard unchanged and
+clears the preview. Preserve your saved original; **do not paste the empty-field
+default over it**. Reconcile manually: keep unrelated assignments and your lsfg
+wrapper, use one leading `BL4FIX_STEAMOS=1` and one leading `WINEDLLOVERRIDES`,
+retain its other DLL entries while setting dsound to `n,b`, keep one `%command%`,
+and place one `-pf_tricks=vcrun2022` after it. Resolve conflicting runtime tricks
+using their documentation before changing them; complex shell forms need manual
+review. The composer is not a general shell parser.
+
+To undo a change, close the game, restore the saved original launch text **exactly**
+in Steam and relaunch. If you choose a temporary test without lsfg, preserve the
+complete original first, change only the lsfg environment assignment/wrapper for
+that test, then close the game and restore the original exactly before relaunching.
+This is a user-performed comparison, not an installer action or a diagnosis.
 
 ## Updates and platform limits
 
@@ -110,12 +172,38 @@ installer's backup or validate existing files; copy conflicting files aside firs
   menu integration and automatic setup-app self-update are Windows-only. Run this
   fork's native setup app; do not add `BL4FixSetup.exe` as a separate non-Steam game/prefix.
 
-If the SDK fails to load, check `dsound.dll` and `Plugins/` under
-`OakGame/Binaries/Win64/`, the launch options, and the SDK's logs. The
-[SDK FAQ](https://bl-sdk.github.io/oak2-mod-db/faq/#can-i-use-this-on-steam-decklinuxmac)
-describes Proton build compatibility and installing `vcrun2022` with Protontricks
-if the selected Proton build does not handle `-pf_tricks`. Install that runtime
-into **Borderlands 4's prefix**, not into the Linux system or an unrelated prefix.
+## Installed files but no mods
+
+1. **Check the root and files.** Compare Steam's **Manage > Browse local files**
+   with the game root reported by **Health check** (or source CLI `--check`). The
+   check compares expected SDK dependencies, selected/required mods and the UI Link
+   against the package, and reports missing, changed or inaccessible files and
+   loose-folder shadowing. Inspect a changed file before replacing it; another
+   tool may own it. Installed counts or `Present` results are file evidence only.
+2. **Check launch setup and runtime separately.** Preserve the complete current
+   options, then use the preview workflow above. Note the selected Proton version
+   and lsfg plugin/version. The
+   [SDK FAQ](https://bl-sdk.github.io/oak2-mod-db/faq/#can-i-use-this-on-steam-decklinuxmac)
+   says compatible Proton builds vary; `-pf_tricks=vcrun2022` does not prove that
+   the chosen build supplied the runtime. Runtime setup or Proton changes need
+   a separate, informed user decision. The installer does not install a runtime,
+   switch Proton, modify Decky or delete a prefix/saves; those are not automatic
+   troubleshooting steps.
+3. **Check fresh SDK activation.** Launch through Steam and press tilde twice to
+   open the SDK console, inspect relevant Proton/SDK errors, and run `mods` as in
+   the [SDK verification instructions](https://bl-sdk.github.io/oak2-mod-db/).
+   Missing logs do not prove failure; old logs do not prove this launch worked.
+   A console that does not open needs investigation, including the console key
+   mapping, before concluding that the loader failed.
+4. **Check BL4 Fix separately.** Once the SDK console works, check **F7** for the
+   BL4 Fix menu and one harmless visible mod behavior. An absent F7 menu alone
+   does not diagnose the loader. Also confirm your existing lsfg remains active.
+
+For help, provide the **complete current launch text**, chosen **Proton version**,
+Steam **Browse local files path**, lsfg plugin/version, and whether double-tilde
+opens the SDK console and `mods` works. If errors are needed, share only relevant
+redacted excerpts; do not send saves or complete logs. File checks and automated
+Linux tests do not establish physical Deck gameplay or lsfg compatibility.
 
 ## Remove
 
