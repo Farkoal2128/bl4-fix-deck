@@ -10,6 +10,13 @@ The package and offline checks can be built without a game installation. Actual
 Steam Deck gameplay, controller navigation, hosting, and performance still need
 testing on the device; this is not a claim of hardware qualification.
 
+**Version note:** the published **steamos-v0.1.0** executable and source ZIP have
+fixed **Copy launch options** output and basic file checks. **Original Steam launch
+options**, **Preview**, the enhanced SDK file diagnostics and CLI `--launch-options`
+below exist in the **current unreleased source**, not those downloads. Build from
+this checkout using [Build from source](#build-from-source) to use them; this guide
+does not announce an updated release.
+
 ## Install
 
 1. Switch the Deck to **Desktop Mode** and fully close Borderlands 4. Let any Steam
@@ -38,15 +45,18 @@ testing on the device; this is not a claim of hardware qualification.
    Direct Connect page; close the game before changing them. Apply can copy the
    standalone app into `~/.local/share/bl4fix/` and add **BL4 Fix Setup** to the
    application menu, so you can return after deleting the download folder.
-3. On **System**, run **Health check** and compare its selected game root with
-   Steam's **Manage > Browse local files**. Its file results do not establish SDK
-   activation. Save a copy of the complete text in **Borderlands 4 > Properties >
-   General > Launch Options** before editing it, then paste it into **Original Steam
-   launch options**. Leave this input empty only if Steam's field is empty. Press
-   **Preview**, inspect **Composed preview**, then press **Copy launch options**
-   and paste the result into Steam. Copy validates again; editing the original
-   clears the old preview. The app does not save or execute this text or edit Steam
-   configuration. See [Launch options and lsfg](#launch-options-and-lsfg) below.
+3. On **System**, run **Health check** and compare the selected game folder with
+   Steam's **Manage > Browse local files**. File results do not establish SDK
+   activation. Save the complete text in **Borderlands 4 > Properties > General >
+   Launch Options** in a separate note before using Copy or editing Steam.
+   **On v0.1.0**, Copy replaces the clipboard with a fixed default and does not
+   merge; follow [manual merge guidance](#launch-options-and-lsfg) for existing text.
+   **On current source builds**, paste the saved text into **Original Steam launch
+   options**. Leave this input empty only if Steam's field is empty. Press **Preview**,
+   inspect **Composed preview**, then **Copy launch options**. Copy validates again;
+   editing the original clears the old preview. Paste the manually merged or
+   validated composed result into Steam yourself. Neither build edits Steam
+   configuration or executes pasted launch text.
 4. Launch through Steam, press tilde twice for the SDK console and run `mods`, then check
    **F7** for BL4 Fix's menu. These are separate checks; see [troubleshooting](#installed-files-but-no-mods).
    Map a rear grip button to **F7** in **Steam Input**
@@ -68,8 +78,10 @@ installs, `--game "..."` selects one, `--mods bl4_minimap,bl4_respec` selects op
 mods, `--check` checks files, and `--uninstall [--remove-sdk]` removes the installation.
 The source package uses the same backend as the standalone app.
 
-Its print-only launch composer needs no game installation or payload and does not
-change Steam. From the extracted source-package folder:
+**Current unreleased source only:** a source package built from this checkout adds
+a print-only launch composer; the published v0.1.0 source ZIP does not have it.
+It needs no game installation or payload and does not change Steam. From the
+extracted package built from this checkout:
 
 ```sh
 python3 install.py --launch-options ''
@@ -89,7 +101,16 @@ installer's backup or validate existing files; copy conflicting files aside firs
 
 ## Launch options and lsfg
 
-For an **empty Steam field only**, the preview is:
+**Published v0.1.0 / manual merging:** before pressing its fixed **Copy launch
+options** button, save Steam's complete original text in a separate note, since
+Copy overwrites the clipboard. It copies only the default below; it neither reads
+nor merges your current options. Paste that default unchanged only when Steam's
+field was empty. For existing options, manually reconcile using the rules below
+and inspect the merged line before applying it in Steam. Keep your lsfg setup and
+other DLL overrides. To undo, restore your saved original exactly with the game closed.
+
+**Current unreleased source:** paste the complete original into the new input and
+use Preview/Copy. For an **empty Steam field only**, its preview is the same default:
 
 ```text
 BL4FIX_STEAMOS=1 WINEDLLOVERRIDES="dsound=n,b" %command% -pf_tricks=vcrun2022
@@ -102,7 +123,9 @@ already loads. The dsound override and runtime argument follow the
 Always paste your actual complete options. These two examples come from the
 [Decky fork README](https://github.com/jbragado/decky-lossless-scaling-vk) and the
 [experimental fork's public-plugin examples](https://github.com/PacificSilent/decky-lsfg-vk-experimental/blob/main/README.md).
-They do not identify your installed plugin/version or prove compatibility:
+They do not identify your installed plugin/version or prove compatibility. The
+right column is current source composer output, also usable as manual merge
+examples for v0.1.0; that release does not generate these merged lines:
 
 | Original input | Composed preview |
 |---|---|
@@ -175,13 +198,15 @@ This is a user-performed comparison, not an installer action or a diagnosis.
 ## Installed files but no mods
 
 1. **Check the root and files.** Compare Steam's **Manage > Browse local files**
-   with the game root reported by **Health check** (or source CLI `--check`). The
-   check compares expected SDK dependencies, selected/required mods and the UI Link
+   with the selected game folder, then use **Health check** (or source CLI `--check`).
+   Published v0.1.0 has basic checks. The enhanced **current source** check reports
+   the root and compares expected SDK dependencies, selected/required mods and the UI Link
    against the package, and reports missing, changed or inaccessible files and
    loose-folder shadowing. Inspect a changed file before replacing it; another
    tool may own it. Installed counts or `Present` results are file evidence only.
 2. **Check launch setup and runtime separately.** Preserve the complete current
-   options, then use the preview workflow above. Note the selected Proton version
+   options, then use the manual merge guidance for v0.1.0 or Preview on current
+   source builds. Note the selected Proton version
    and lsfg plugin/version. The
    [SDK FAQ](https://bl-sdk.github.io/oak2-mod-db/faq/#can-i-use-this-on-steam-decklinuxmac)
    says compatible Proton builds vary; `-pf_tricks=vcrun2022` does not prove that
