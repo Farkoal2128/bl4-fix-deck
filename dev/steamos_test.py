@@ -12,7 +12,7 @@ import tempfile
 import types
 import unittest
 import zipfile
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -174,6 +174,49 @@ class SteamOSTest(unittest.TestCase):
                        "~/lsfg '-pf_tricks=vcrun2019'", "~/lsfg -pf_tricks"):
             with self.subTest(prefix=prefix), self.assertRaisesRegex(ValueError, "-pf_tricks before %command%"):
                 steamos.compose_launch_options(f"{prefix} %command%")
+
+    def launch_cli(self, existing, *options):
+        with ExitStack() as stack:
+            for name in ("find_games", "game_folder", "payload_path", "install", "health", "uninstall", "finish", "ensure_closed"):
+                stack.enter_context(patch.object(steamos, name, side_effect=AssertionError(name)))
+            for name in ("subprocess.Popen", "subprocess.run", "os.system"):
+                stack.enter_context(patch(name, side_effect=AssertionError(name)))
+            stack.enter_context(patch.object(os, "geteuid", side_effect=AssertionError("root check"), create=True))
+            stack.enter_context(patch.object(sys, "argv", ["steamos.py", "--launch-options", existing, *options]))
+            stdout = stack.enter_context(redirect_stdout(io.StringIO()))
+            stderr = stack.enter_context(redirect_stderr(io.StringIO()))
+            code = steamos.main()
+            return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_launch_cli_print_only_without_game_or_payload(self):
+        for existing in ("", "LSFG_PROCESS=decky-lsfg-vk %command%", "~/lsfg %command%"):
+            with self.subTest(existing=existing):
+                code, output, error = self.launch_cli(existing)
+                self.assertEqual(code, 0)
+                self.assertEqual(output, steamos.compose_launch_options(existing) + "\n")
+                self.assertEqual(error, "")
+
+    def test_launch_cli_refusal_never_runs_operations(self):
+        code, output, error = self.launch_cli("%command% && unsafe")
+        self.assertEqual((code, output), (1, ""))
+        self.assertIn("manually", error)
+        for options in (("--game", "missing"), ("--archive", "missing.zip"), ("--mods", ""),
+                        ("--list",), ("--check",), ("--uninstall",), ("--remove-sdk",), ("--finish",)):
+            with self.subTest(options=options):
+                code, output, error = self.launch_cli("", *options)
+                self.assertEqual((code, output), (1, ""))
+                self.assertIn("cannot be combined", error)
+
+    def test_install_cli_labels_empty_default_and_pending_activation(self):
+        with patch.object(sys, "argv", ["steamos.py", "--game", str(self.game)]), \
+                patch.object(os, "geteuid", return_value=1000, create=True), \
+                patch.object(steamos, "install", return_value=self.root) as install, \
+                redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(steamos.main(), 0)
+        install.assert_called_once_with(self.game, steamos.payload_path(), None)
+        self.assertIn("Files installed. Launch setup and SDK runtime verification pending.", stdout.getvalue())
+        self.assertIn("Default for an empty Steam Launch Options field only:", stdout.getvalue())
+        self.assertIn('--launch-options "EXISTING"', stdout.getvalue())
 
     def test_health_checks_sdk_dependencies(self):
         self.health_payload()

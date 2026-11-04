@@ -30,9 +30,11 @@ class WindowTest(unittest.TestCase):
         exe.write_bytes(b"fixture only")
         self.archive = self.root / "payload.zip"
         with zipfile.ZipFile(self.archive, "w") as zf:
-            zf.writestr("OakGame/Binaries/Win64/dsound.dll", b"sdk")
+            for name in steamos.SDK_ANCHORS:
+                zf.writestr(name, b"sdk fixture")
             for mod in catalog.MODS:
                 zf.writestr(f"sdk_mods/{mod.id}.sdkmod", mod.id.encode())
+            zf.writestr(steamos.PAK_ROOT + catalog.LINK_PAK, b"UI Link fixture")
         with patch.object(steamos, "find_games", return_value=[]):
             self.app = gui.App(self.archive, self.game)
         self.app.withdraw()
@@ -59,7 +61,7 @@ class WindowTest(unittest.TestCase):
             self.wait_for_task()
         errors.assert_not_called()
         self.assertEqual(steamos.installed_mods(self.game), set(catalog.REQUIRED) | {"bl4_minimap"})
-        self.assertIn("Installed. Backup:", self.app.status.get())
+        self.assertIn("Files installed. Launch setup/SDK verification pending.", self.app.status.get())
         self.assertFalse(self.app.folder.instate(["disabled"]))
 
     def test_uninstall_can_cancel_and_runs_with_sdk_choice(self):
@@ -99,10 +101,54 @@ class WindowTest(unittest.TestCase):
             errors.assert_called_once()
             self.assertEqual(len(gui.shared.Config.load(path).friends), 1)
 
-    def test_copy_launch_options(self):
+    def test_copy_empty_launch_options_matches_backend(self):
         self.app.copy_options()
         self.app.update()
-        self.assertEqual(self.app.clipboard_get(), steamos.LAUNCH_OPTIONS)
+        self.assertEqual(self.app.clipboard_get(), steamos.compose_launch_options(""))
+        self.assertEqual(self.app.launch_composed.get(), self.app.clipboard_get())
+        self.assertTrue(self.app.launch_preview.instate(["readonly"]))
+
+    def test_launch_lsfg_and_valid_edit_refresh(self):
+        for existing in ("LSFG_PROCESS=decky-lsfg-vk %command%", "~/lsfg %command% --long-option=value"):
+            self.app.launch_original.set(existing)
+            self.assertEqual(self.app.launch_composed.get(), "")
+            self.app.copy_options()
+            expected = steamos.compose_launch_options(existing)
+            self.assertEqual(self.app.clipboard_get(), expected)
+            self.assertEqual(self.app.launch_composed.get(), expected)
+            self.assertIn(existing, expected)
+        self.app.launch_original.set("%command% --edited")
+        self.app.preview_options()
+        self.assertIn("--edited", self.app.launch_composed.get())
+        self.assertNotIn("--edited", self.app.clipboard_get())
+
+    def test_launch_invalid_preserves_input_and_clipboard_clears_preview(self):
+        self.app.copy_options()
+        original_clipboard = self.app.clipboard_get()
+        original = "%command% && do-not-execute"
+        self.app.launch_original.set(original)
+        self.assertEqual(self.app.launch_composed.get(), "")
+        # Copy must recompute instead of trusting an old preview.
+        self.app.launch_composed.set("stale preview")
+        with patch.object(gui, "open_desktop", side_effect=AssertionError("launch")):
+            self.app.copy_options()
+        self.assertEqual(self.app.launch_composed.get(), "")
+        self.assertEqual(self.app.launch_original.get(), original)
+        self.assertEqual(self.app.clipboard_get(), original_clipboard)
+        self.assertIn("manually", self.app.status.get())
+
+    def test_health_separates_files_from_activation_without_logging_launch_text(self):
+        launch = "LSFG_PROCESS=private-wrapper %command%"
+        self.app.launch_original.set(launch)
+        with patch.object(gui.messagebox, "showerror") as errors:
+            self.app.health()
+            self.wait_for_task()
+        errors.assert_not_called()
+        text = self.app.log_box.get("1.0", "end")
+        self.assertIn("File status (not runtime activation):", text)
+        self.assertIn("Missing: sdk_mods/__main__.py", text)
+        self.assertIn("SDK runtime activation unverified.", text)
+        self.assertNotIn(launch, text)
 
     def test_shortcut_copies_executable_and_quotes_home(self):
         source = self.root / "fixture-binary"
