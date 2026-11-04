@@ -97,6 +97,8 @@ def compose_launch_options(existing: str) -> str:
             leading = False
         elif "%command%" in raw or "%command%" in word:
             raise _launch_error("Quoted or embedded %command% placeholder")
+        elif name in {flag + "+", overrides + "+"} and "=" in word:
+            raise _launch_error(f"Unsupported append assignment to {name[:-1]}")
         elif name in {flag, overrides} and "=" in word:
             if not leading or not assignment:
                 raise _launch_error(f"{name} must be a leading unquoted variable assignment")
@@ -127,8 +129,11 @@ def compose_launch_options(existing: str) -> str:
                 raise _launch_error("Conflicting or repeated -pf_tricks argument")
             runtime_seen = True
         elif leading and not assignment:
-            if word.rsplit("/", 1)[-1] == "env":
-                raise _launch_error("Unsupported env wrapper")
+            executable = word.rsplit("/", 1)[-1]
+            if executable in {"env", "command", "exec", "eval", "builtin", "source", ".",
+                              "sh", "bash", "dash", "ash", "zsh", "ksh", "fish", "csh", "tcsh",
+                              "busybox", "sudo", "doas", "xargs"}:
+                raise _launch_error(f"Unsupported shell or command-dispatch wrapper ({executable})")
             if not word or raw in {"if", "then", "else", "elif", "fi", "for", "in", "while",
                                    "until", "do", "done", "case", "esac", "select", "function", "time"}:
                 raise _launch_error("Unsupported shell wrapper")

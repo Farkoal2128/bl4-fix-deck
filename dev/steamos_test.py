@@ -129,6 +129,9 @@ class SteamOSTest(unittest.TestCase):
         for existing, item in (
             ("BL4FIX_STEAMOS=bad %command%", "BL4FIX_STEAMOS"),
             ("BL4FIX_STEAMOS= %command%", "BL4FIX_STEAMOS"),
+            ("BL4FIX_STEAMOS+=0 %command%", "Unsupported append assignment to BL4FIX_STEAMOS"),
+            ('WINEDLLOVERRIDES+="dxgi=n" %command%', "Unsupported append assignment to WINEDLLOVERRIDES"),
+            ("~/lsfg BL4FIX_STEAMOS+=0 %command%", "Unsupported append assignment to BL4FIX_STEAMOS"),
             ("BL4FIX_STEAMOS=1 BL4FIX_STEAMOS=1 %command%", "Repeated BL4FIX_STEAMOS"),
             ("~/lsfg BL4FIX_STEAMOS=0 %command%", "BL4FIX_STEAMOS must be a leading"),
             ('"BL4FIX_STEAMOS=1" %command%', "BL4FIX_STEAMOS must be a leading"),
@@ -156,6 +159,10 @@ class SteamOSTest(unittest.TestCase):
             "LSFG=$VAR %command%", '%command% "$VAR"', "%command% | other", "%command% && other",
             "%command% > file", "%command%; other", '%command% "a;b"', "%command% *.dll",
             "env -i %command%", '"/usr/bin/env" FOO=bar %command%', "if %command%",
+            "command /usr/bin/env -i %command%", "exec /usr/bin/env -i %command%",
+            "bash -c 'printf abc > result' %command%",
+            """FOO=bar "/bin/bash" -c 'printf abc > result' %command%""",
+            "eval 'printf abc > result' %command%", "busybox sh -c 'printf abc > result' %command%",
         ):
             with self.subTest(existing=existing), self.assertRaisesRegex(ValueError, "merge .* manually"):
                 steamos.compose_launch_options(existing)
