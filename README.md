@@ -56,6 +56,13 @@ app. For this fork's installer, use [SteamOS installation](#steam-deck--steamos-
 
 ### Steam Deck / SteamOS (this fork)
 
+**Version note:** the published **steamos-v0.1.0** downloads, including the source
+ZIP, have a fixed **Copy launch options** button and basic file checks. They do
+not include **Original Steam launch options**, **Preview**, the enhanced SDK file
+diagnostics or `--launch-options`. Those features below describe the **current
+unreleased source**, which must be [built from this checkout](docs/STEAMOS.md#build-from-source).
+No updated release has been published for this workflow.
+
 1. **[Download BL4FixSetup-SteamOS.tar.gz](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest/download/BL4FixSetup-SteamOS.tar.gz)**
    from the [SteamOS release](https://github.com/Farkoal2128/bl4-fix-deck/releases/latest).
    No GitHub sign-in is required. The release includes its
@@ -67,18 +74,23 @@ app. For this fork's installer, use [SteamOS installation](#steam-deck--steamos-
 3. Select the detected game folder (internal storage or SD card), tick the mods you
    want and press **Apply selection**. Direct Connect and Mod Menu are required.
    Unticked mods are removed; your saves, settings and other mods are kept.
-4. On **System**, run **Health check** and compare its root with Steam's **Manage >
-   Browse local files**. File presence/content does not establish SDK activation.
-   Save a copy of the complete current Steam **Launch Options** text, then
-   paste it into **Original Steam launch options**; leave this empty only if Steam's
-   field is empty. Press **Preview**, inspect the composed text, then **Copy launch
-   options** and paste into Borderlands 4's Steam Properties. Launch through Steam.
+4. Compare the selected game folder with Steam's **Manage > Browse local files**
+   and run **Health check** on **System**. File checks do not establish SDK activation.
+   Save the complete current Steam **Launch Options** text in a separate note
+   before pressing **Copy launch options** or editing Steam. **On v0.1.0**, Copy
+   replaces the clipboard with the fixed empty-field default; it does not merge.
+   Follow the [manual merge guidance](docs/STEAMOS.md#launch-options-and-lsfg) for
+   existing options. **On current source builds**, paste the original into
+   **Original Steam launch options**; leave this empty only if Steam's field is
+   empty. Press **Preview**, inspect the result, then **Copy launch options**.
+   Paste the manually merged or validated composed text into Steam, then launch.
 5. After a fresh launch, press tilde twice to open the **SDK console** and run
    `mods`; then check **F7** for BL4 Fix's menu. Installed files and an absent F7
    menu alone do not establish whether the SDK loaded.
 
-Empty input produces the default below. Existing lsfg launch lines are composed
-instead of replaced; these are example inputs, not identification of your plugin:
+The **unreleased source composer** produces the examples below; v0.1.0 users can
+use them as manual merge examples. Empty input produces the default. The lsfg
+inputs are examples, not identification of your plugin:
 
 | Original input | Composed preview |
 |---|---|
@@ -96,10 +108,11 @@ Keep the original and merge manually rather than replacing it with the empty-fie
 default. To undo an experiment, close the game and restore the saved original text
 exactly in Steam, then relaunch.
 
-In the extracted source package, `python3 install.py --launch-options '~/lsfg %command%'`
+In a source package **built from the current checkout**, `python3 install.py --launch-options '~/lsfg %command%'`
 prints composed text only; `python3 install.py --launch-options ''` uses the empty-field
 default. This mode needs no game installation and cannot be combined with operational
-options. It never applies the result to Steam.
+options. It never applies the result to Steam. This option is absent from the
+published v0.1.0 source ZIP.
 
 If loading fails, collect the complete current launch text, selected Proton version,
 Steam's local-files path and whether the SDK console opens before deciding the cause.
