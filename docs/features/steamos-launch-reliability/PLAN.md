@@ -76,7 +76,7 @@ Prerequisites: Linux, Python 3.11, Tk, Xvfb, PyInstaller 6.11.1 and build downlo
 | 🚦 G-P | G-P | owner approval / planning-config publication | seam | small | ✅ approved 2026-11-03; planning/configuration only published to origin/main at a012dcbc096fc83bc6f1eb5998099933da920c0e; remote verified; no implementation or release publication |
 | 1 | LR-101 | read-only SDK diagnostics | seam | medium | ✅ done · 7fe450c · GO review101 r1 |
 | 2 | LR-102 | launch composition | seam | medium | ✅ done · bfdb8ca · GO review102 r3 |
-| 3 | LR-103 | GUI and CLI workflow | seam | medium | ✅ done · 83758c1 · GO review103 r2 |
+| 3 | LR-103 | GUI and CLI workflow | seam | medium | ✅ done · 83758c1; integration correction e6fbb51 · GO review103; focused PASS f2cef2c tree 8397c9f, successor adds inspected LR-104 docs only |
 | 4 | LR-104 | user instructions | seam | small | ✅ done · 1a276f3 · GO review104 r1 |
 | 🚦 G-T | G-T | final technical checkpoint | seam | medium | pending |
 | 🚦 G-H | G-H | physical Deck acceptance | seam | medium | pending |
